@@ -1,0 +1,42 @@
+From: m5-linux project
+Subject: [PATCH 1/N] soc: Add M4 Pro/Max and M5 SoC identifiers
+
+Add T6040 (M4 Pro), T6041 (M4 Max), T8142 (M5), T6050 (M5 Pro), and
+T6051 (M5 Max) to the SoC identifier table and TARGET dispatch chain.
+
+UART_BASE values are XXX placeholders — fill from ADT analysis of
+UniversalMac_26.5_25F71_Restore.ipsw serial-node properties.
+
+--- a/src/soc.h
++++ b/src/soc.h
+@@ -30,6 +30,11 @@
+ #define T6030 0x6030
+ #define T6031 0x6031
+ #define T6034 0x6034
++/* M4 Pro/Max */
++#define T6040 0x6040
++#define T6041 0x6041
++/* M5 Pro/Max */
++#define T6050 0x6050
++#define T6051 0x6051
++/* M5 base */
++#define T8142 0x8142
+
+ #if TARGET == T8103
+     #define UART_BASE 0x235200000
+@@ ... (existing entries unchanged) ...
++#elif TARGET == T6040 || TARGET == T6041
++    /* M4 Pro/Max — XXX: verify UART_BASE from ADT serial node */
++    #define UART_BASE 0xXXXXXXXXX
++    #define MAX_CPUS 16
++    #define NUM_DIES 1
++#elif TARGET == T8142
++    /* M5 base (Hidra) — XXX: verify from ADT */
++    #define UART_BASE 0xXXXXXXXXX
++    #define MAX_CPUS 10
++    #define NUM_DIES 1
++#elif TARGET == T6050 || TARGET == T6051
++    /* M5 Pro/Max (Sotra/TBD) — XXX: verify from ADT */
++    #define UART_BASE 0xXXXXXXXXX
++    #define MAX_CPUS 20
++    #define NUM_DIES 1

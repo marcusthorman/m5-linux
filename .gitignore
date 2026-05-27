@@ -1,0 +1,30 @@
+# IPSW files — large, download from Apple CDN
+ipsw/*.ipsw
+
+# Extracted firmware blobs — not redistributable (Apple copyright)
+analysis/*/extracted/
+analysis/*/fw/
+
+# Python venv
+.venv/
+
+# Ghidra projects
+*.gpr
+*.rep/
+
+# Binary analysis artifacts
+*.i64
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+
+# Reference repos (cloned separately)
+tools/m1n1-ref/
+tools/linux-ref/
+
+# Build artifacts
+*.o
+*.ko
+*.dtb.tmp

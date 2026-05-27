@@ -1,0 +1,31 @@
+From: m5-linux project
+Subject: [PATCH 3/N] chickens: Add M4 Pro/Max and M5 CPU feature stubs
+
+Uses features_m4 as the starting point for all new chips — same as how
+T8140 (A18 Pro) was added. The "XXX figure out what features are actually
+available on M4" comment already exists in m1n1; M5 inherits the same
+uncertainty. Feature flags will be refined during bring-up.
+
+--- a/src/chickens.c
++++ b/src/chickens.c
+@@ ... (after T8140 Tahiti entries) ...
++    /* M4 Pro (T6040) */
++    {MIDR_PART_T6040_ECORE, "M4 Pro Brava (E core)", NULL, &features_m4},
++    {MIDR_PART_T6040_PCORE, "M4 Pro Brava (P core)", NULL, &features_m4},
++    /* M4 Max (T6041) */
++    {MIDR_PART_T6041_ECORE, "M4 Max Brava (E core)", NULL, &features_m4},
++    {MIDR_PART_T6041_PCORE, "M4 Max Brava (P core)", NULL, &features_m4},
++    /* M5 base (T8142) — codename Hidra */
++    /* XXX: features_m5 struct needed once M5 CPU errata are known */
++    {MIDR_PART_T8142_ECORE, "M5 Hidra (E core)",    NULL, &features_m4},
++    {MIDR_PART_T8142_PCORE, "M5 Hidra (P core)",    NULL, &features_m4},
++    /* M5 Pro (T6050) — codename Sotra */
++    {MIDR_PART_T6050_ECORE, "M5 Pro Sotra (E core)", NULL, &features_m4},
++    {MIDR_PART_T6050_PCORE, "M5 Pro Sotra (P core)", NULL, &features_m4},
++    /* M5 Max (T6051) */
++    {MIDR_PART_T6051_ECORE, "M5 Max (E core)",       NULL, &features_m4},
++    {MIDR_PART_T6051_PCORE, "M5 Max (P core)",       NULL, &features_m4},
+
+NOTE: "Brava" is the rumored M4 Pro/Max CPU core codename based on the
+arithmetic pattern (Avalanche/Blizzard → Everest/Sawtooth → Brava?).
+Verify against ADT `compatible` strings in the IPSW cpu nodes.

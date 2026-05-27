@@ -1,0 +1,40 @@
+From: m5-linux project
+Subject: [PATCH 2/N] midr: Add M4 Pro/Max and M5 CPU MIDR part identifiers
+
+All MIDR_PART_* values are XXX — extract from the ADT cpu-impl-reg
+nodes in the IPSW. The pattern from existing chips:
+
+  T6000 (M1 Pro/Max): E=0x24, P=0x25 / 0x28, 0x29
+  T6020 (M2 Pro/Max): E=0x34, P=0x35 / 0x38, 0x39
+  T6030 (M3 Pro/Max): E=0x44, P=0x45 / 0x48, 0x49
+
+Likely pattern for T6040/T6041 (M4 Pro/Max): E=0x54/0x58, P=0x55/0x59
+Likely pattern for T6050/T6051 (M5 Pro/Max): E=0x64/0x68, P=0x65/0x69
+T8142 (M5 base): likely 0x5x, following T8132 (M4) = 0x52/0x53
+
+These are educated guesses from the arithmetic progression. MUST be
+confirmed against actual ADT before use.
+
+--- a/src/midr.h
++++ b/src/midr.h
+@@ ... (after T8140 entries) ...
++
++/* M4 Pro (T6040) — XXX: verify from ADT */
++#define MIDR_PART_T6040_ECORE  0xXX
++#define MIDR_PART_T6040_PCORE  0xXX
++
++/* M4 Max (T6041) — XXX: verify from ADT */
++#define MIDR_PART_T6041_ECORE  0xXX
++#define MIDR_PART_T6041_PCORE  0xXX
++
++/* M5 base (T8142 / Hidra) — XXX: verify from ADT */
++#define MIDR_PART_T8142_ECORE  0xXX
++#define MIDR_PART_T8142_PCORE  0xXX
++
++/* M5 Pro (T6050) — XXX: verify from ADT */
++#define MIDR_PART_T6050_ECORE  0xXX
++#define MIDR_PART_T6050_PCORE  0xXX
++
++/* M5 Max (T6051) — XXX: verify from ADT */
++#define MIDR_PART_T6051_ECORE  0xXX
++#define MIDR_PART_T6051_PCORE  0xXX
