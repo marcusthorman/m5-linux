@@ -575,6 +575,43 @@ when handed a non-SPTM-aware kernel on an M4+ system. The string evidence
 suggests "assertion failure / refuse," but I can't prove the absence of a
 quietly-tolerated path without running it.
 
+### Confirmed by disassembly: the uses_sptm assertion is fatal
+
+Wrote a small adrp+add scanner (no load-base needed — iBoot is contiguous, so
+inter-instruction PC-relative pointers cancel the base out) and disassembled
+the surrounding code with capstone. Mapping:
+
+- "kc_layout assertion (uses_sptm)" string at file offset `0x2693fa`, referenced
+  by an assertion block at `0x1224bc` (T8132 26.5 iBoot.j604).
+- That block, like the surrounding ~10 assertion blocks, captures `{func_name,
+  expression, line_no}` into a panic struct and branches to a common epilogue
+  at `0x1225bc`.
+- The epilogue stores two more fields then branches to **`0x1223a4`**, which is
+  an unconditional `bl` chain:
+
+  ```
+  0x1223a4: mov  w0, #0x4c49           ; panic tag
+  0x1223a8: bl   #0x123190             ; panic helper
+  0x1223ac: bl   #0x13d5d8             ; cleanup
+  0x1223b0: bl   #0x1231c8             ; more
+  0x1223b4: bl   #0x12159c
+  0x1223c4: bl   #0x16f9e8             ; final panic call (no return)
+  ```
+
+  No conditional return — this is iBoot's panic finalizer.
+
+So if the kernel's `kc_layout` does not match `uses_sptm` (i.e., a non-SPTM-aware
+image is loaded on an M4+ iBoot), iBoot records the assertion details and
+**halts at `0x1223a4`**. There is no recoverable path, no degraded boot, no
+"continue without SPTM." This closes the residual: the static answer is
+unambiguous, and a hardware test would just confirm the panic.
+
+**Therefore the packaging requirement is hard:** on M4+/M3-on-26+, m1n1 must
+ship as an SPTM-aware Boot Kernel Collection. The runtime stub (patch 0004) is
+correct *only* if the BootKC packaging gates iBoot into the SPTM-aware path,
+which iBoot then drives all the way through enforce_after before the OS runs,
+at which point `(0x0:0xf)` succeeds.
+
 ### Net result: Linux must masquerade as XNU
 
 The XNU-shim path is now fully scoped. Linux on M4+/M3-on-26 needs:
@@ -867,7 +904,8 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | OS-side SPTM sibling calls before `(0x0:0xf)`    | ✓ done  | **none**: XNU `__TEXT_BOOT_EXEC` has only one SPTM call; idx `0xf` stub has zero non-boot callers |
 | iBoot accessibility (M4 board)                   | ✓ done  | LZFSE-compressed, unencrypted; `mBoot-18000.120.36`; raw 3 MB ARM64 |
 | iBoot's SPTM-setup gating                        | ✓ done  | gated on `kc_layout->present==1 && bx_size!=0` (BootKC structure), **not** on signature/policy |
-| iBoot's permissive-policy DT prep for m1n1       | ◑ part  | answered statically: iBoot will register m1n1 with SPTM **iff** m1n1 is packaged as an SPTM-aware BootKC. Final certainty needs a hardware test. |
+| iBoot's permissive-policy DT prep for m1n1       | ✓ done  | iBoot will register m1n1 with SPTM **iff** m1n1 is packaged as an SPTM-aware BootKC; otherwise iBoot panics at `0x1223a4` (confirmed by disassembly). |
+| iBoot's behavior on non-SPTM-aware kernel        | ✓ done  | fatal: assertion records details and branches to panic finalizer at `0x1223a4` (`mov w0, #0x4c49; bl #0x123190; ...`). No fallback. |
 | m1n1 packaging requirement on M4+                | ✓ done  | must be a BootKC with a valid `kc_layout` (SPTM-aware). Installer/toolchain change, not a runtime shim change. |
 | Global passthrough/audit-only mode               | ✓ done  | **does NOT exist**; only per-subsystem knobs (`mapping-enforcement-mode` etc.) |
 | `uat_bootstrap_parse_dt` /chosen properties      | ◑ part  | known names: `mapping-enforcement-mode`, `pmap-max-asids`, `uat-enforce-gpu-carveout`, `uat-mapping-limit`; values TBD |
