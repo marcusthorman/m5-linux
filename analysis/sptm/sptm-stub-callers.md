@@ -68,6 +68,25 @@ are at `0xfffffe000c067cc8..0xfffffe000c067d18` in the fileset, mixed
 into the cputrace-stubs region. The other indirectly-dispatched idxs
 sit in the main block but have no static caller.
 
+## Chained-fixup decode attempt (negative)
+
+A fixup-slot scan over `__DATA_CONST` / `__DATA` / `__DATA_SPTM` in the
+fileset, trying multiple candidate encodings for the indirect-dispatch
+stub VMAs (raw VMA, 36/40/51-bit cache-relative runtime offset, low-32
+VMA), yielded **zero** matching slots. The kernelcache uses a fixup
+format that doesn't store these stub pointers in any of the conventional
+arm64e shapes — likely the kernel-cache loader's own per-segment chain
+format, distinct from `DYLD_CHAINED_PTR_ARM64E`. Decoding it properly
+requires either (a) following the per-segment chain headers in
+`__chain_starts` (the SPTM binary has 7 seg-info entries with file
+offsets that don't fit the standard `dyld_chained_starts_in_image`
+layout), or (b) reading XNU's kernelcache loader sources. Neither was
+done here.
+
+**Net:** pinning init/destroy state idx without hardware is blocked on
+either a real chained-fixup decoder for the kernelcache, or first-boot
+observation on Apple silicon.
+
 ## Method details
 
 ```text
