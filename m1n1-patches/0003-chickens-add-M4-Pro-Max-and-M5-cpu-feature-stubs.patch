@@ -6,26 +6,41 @@ T8140 (A18 Pro) was added. The "XXX figure out what features are actually
 available on M4" comment already exists in m1n1; M5 inherits the same
 uncertainty. Feature flags will be refined during bring-up.
 
+ADT cpu-node `compatible` strings verified from the 25F71 device trees:
+
+  T6040 M4 Pro / T6041 M4 Max : E=apple,sawtooth  P=apple,everest
+  T8142 M5 base               : E=apple,sawtooth  P=apple,everest
+  T6050 M5 Pro                : E=apple,sawtooth  P=apple,everest
+  T6051 M5 Max                : absent from 25F71 — assumed sawtooth/everest
+
+Correction: the earlier "blizzard/avalanche" claim was WRONG (it came from
+reading M2/M3 boards j493/j504/j514s by mistake). Every M3/M4/M5 SoC reports
+apple,sawtooth (E) / apple,everest (P). blizzard/avalanche is M2; icestorm/
+firestorm is M1. These ADT `compatible` strings are the Linux DTS core names
+and are a SEPARATE namespace from m1n1's MIDR codenames (e.g. T8132 = Donan).
+
+The chickens.c table keys on MIDR part IDs, not on the compatible string, and
+m1n1 labels each entry by chip codename (cf. "M4 Donan (E core)"). M4 Pro/Max
+and M5 codenames are not known from the ADT, so the labels below stay neutral.
+MIDR part IDs remain XXX (patch 2/N) — cpu-impl-reg holds MMIO base addresses,
+not MIDR values; obtain from `mrs midr_el1` on real hardware.
+
 --- a/src/chickens.c
 +++ b/src/chickens.c
-@@ ... (after T8140 Tahiti entries) ...
-+    /* M4 Pro (T6040) */
-+    {MIDR_PART_T6040_ECORE, "M4 Pro Brava (E core)", NULL, &features_m4},
-+    {MIDR_PART_T6040_PCORE, "M4 Pro Brava (P core)", NULL, &features_m4},
-+    /* M4 Max (T6041) */
-+    {MIDR_PART_T6041_ECORE, "M4 Max Brava (E core)", NULL, &features_m4},
-+    {MIDR_PART_T6041_PCORE, "M4 Max Brava (P core)", NULL, &features_m4},
-+    /* M5 base (T8142) — codename Hidra */
+@@ ... (after the T8140 Tahiti entries) ...
++    /* M4 Pro (T6040) — sawtooth/everest cores, codename + MIDR XXX */
++    {MIDR_PART_T6040_ECORE, "M4 Pro (E core)", NULL, &features_m4},
++    {MIDR_PART_T6040_PCORE, "M4 Pro (P core)", NULL, &features_m4},
++    /* M4 Max (T6041) — sawtooth/everest cores, codename + MIDR XXX */
++    {MIDR_PART_T6041_ECORE, "M4 Max (E core)", NULL, &features_m4},
++    {MIDR_PART_T6041_PCORE, "M4 Max (P core)", NULL, &features_m4},
++    /* M5 base (T8142) — sawtooth/everest cores, codename + MIDR XXX */
 +    /* XXX: features_m5 struct needed once M5 CPU errata are known */
-+    {MIDR_PART_T8142_ECORE, "M5 Hidra (E core)",    NULL, &features_m4},
-+    {MIDR_PART_T8142_PCORE, "M5 Hidra (P core)",    NULL, &features_m4},
-+    /* M5 Pro (T6050) — codename Sotra */
-+    {MIDR_PART_T6050_ECORE, "M5 Pro Sotra (E core)", NULL, &features_m4},
-+    {MIDR_PART_T6050_PCORE, "M5 Pro Sotra (P core)", NULL, &features_m4},
-+    /* M5 Max (T6051) */
-+    {MIDR_PART_T6051_ECORE, "M5 Max (E core)",       NULL, &features_m4},
-+    {MIDR_PART_T6051_PCORE, "M5 Max (P core)",       NULL, &features_m4},
-
-NOTE: "Brava" is the rumored M4 Pro/Max CPU core codename based on the
-arithmetic pattern (Avalanche/Blizzard → Everest/Sawtooth → Brava?).
-Verify against ADT `compatible` strings in the IPSW cpu nodes.
++    {MIDR_PART_T8142_ECORE, "M5 (E core)", NULL, &features_m4},
++    {MIDR_PART_T8142_PCORE, "M5 (P core)", NULL, &features_m4},
++    /* M5 Pro (T6050) — sawtooth/everest cores, codename + MIDR XXX */
++    {MIDR_PART_T6050_ECORE, "M5 Pro (E core)", NULL, &features_m4},
++    {MIDR_PART_T6050_PCORE, "M5 Pro (P core)", NULL, &features_m4},
++    /* M5 Max (T6051) — absent from 25F71; MIDR XXX */
++    {MIDR_PART_T6051_ECORE, "M5 Max (E core)", NULL, &features_m4},
++    {MIDR_PART_T6051_PCORE, "M5 Max (P core)", NULL, &features_m4},

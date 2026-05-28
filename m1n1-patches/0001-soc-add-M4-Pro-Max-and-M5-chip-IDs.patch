@@ -4,8 +4,21 @@ Subject: [PATCH 1/N] soc: Add M4 Pro/Max and M5 SoC identifiers
 Add T6040 (M4 Pro), T6041 (M4 Max), T8142 (M5), T6050 (M5 Pro), and
 T6051 (M5 Max) to the SoC identifier table and TARGET dispatch chain.
 
-UART_BASE values are XXX placeholders — fill from ADT analysis of
-UniversalMac_26.5_25F71_Restore.ipsw serial-node properties.
+EARLY_UART_BASE values verified from the `uart0` ADT node `reg`, translated
+through each board's `arm-io` `ranges`, in UniversalMac_26.5_25F71_Restore.ipsw.
+Method calibrated against upstream T8132 (J604 reg 0x1ad200000 -> 0x3ad200000):
+
+  T6040 (M4 Pro)  : 0x429200000  (boards J616s, J773s, J614s)
+  T6041 (M4 Max)  : 0x429200000  (boards J616c, J575c, J614c — same as M4 Pro)
+  T8142 (M5 base) : 0x3a5200000  (boards J704/J813/J815; arm-io base 0x2_10000000)
+  T6050 (M5 Pro)  : 0x505200000  (boards J716s/J716c/J714s/J714c)
+  T6051 (M5 Max)  : UNKNOWN — t6051 is absent from 25F71 (no dtree/kernelcache)
+
+NOTE: m1n1 uses EARLY_UART_BASE (not UART_BASE), and the per-TARGET block in
+soc.h defines only that macro. MAX_CPUS lives in smp.h as a single global (24);
+it is NOT a per-SoC soc.h field, so it is intentionally omitted here. M5 Pro/Max
+enumerate >24 cpu nodes in the ADT, so smp.h MAX_CPUS likely needs bumping
+during bring-up (separate change).
 
 --- a/src/soc.h
 +++ b/src/soc.h
@@ -23,20 +36,17 @@ UniversalMac_26.5_25F71_Restore.ipsw serial-node properties.
 +#define T8142 0x8142
 
  #if TARGET == T8103
-     #define UART_BASE 0x235200000
-@@ ... (existing entries unchanged) ...
+ #define EARLY_UART_BASE 0x235200000
+@@ ... (after the existing TARGET == T6030 / T6031 / T8132 entries) ...
 +#elif TARGET == T6040 || TARGET == T6041
-+    /* M4 Pro/Max — XXX: verify UART_BASE from ADT serial node */
-+    #define UART_BASE 0xXXXXXXXXX
-+    #define MAX_CPUS 16
-+    #define NUM_DIES 1
++/* M4 Pro/Max — verified from j616s/j616c ADT (arm-io base 0x2_00000000) */
++#define EARLY_UART_BASE 0x429200000
 +#elif TARGET == T8142
-+    /* M5 base (Hidra) — XXX: verify from ADT */
-+    #define UART_BASE 0xXXXXXXXXX
-+    #define MAX_CPUS 10
-+    #define NUM_DIES 1
-+#elif TARGET == T6050 || TARGET == T6051
-+    /* M5 Pro/Max (Sotra/TBD) — XXX: verify from ADT */
-+    #define UART_BASE 0xXXXXXXXXX
-+    #define MAX_CPUS 20
-+    #define NUM_DIES 1
++/* M5 base — verified from j704 ADT (arm-io base 0x2_10000000) */
++#define EARLY_UART_BASE 0x3a5200000
++#elif TARGET == T6050
++/* M5 Pro — verified from j716s/j716c/j714s ADT (arm-io base 0x2_00000000) */
++#define EARLY_UART_BASE 0x505200000
++#elif TARGET == T6051
++/* M5 Max — XXX: t6051 absent from 25F71, EARLY_UART_BASE unconfirmed */
++#define EARLY_UART_BASE 0xXXXXXXXXX

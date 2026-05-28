@@ -37,12 +37,12 @@ Silicon Mac firmware in a single file. Key components to extract:
 
 | SoC | ID | Devices | Status |
 |-----|----|---------|--------|
-| M4 base | T8132 | MBP 14" base | m1n1 UART; all else TBA |
-| M4 Pro | T6040 | MBP 14"/16" Pro | m1n1 PMGR; all else TBA |
-| M4 Max | T6041 | MBP 14"/16" Max | m1n1 PMGR; all else TBA |
-| M5 base | T8142 | MBP 14" base, MBA | nothing |
-| M5 Pro | T6050 | MBP 14"/16" Pro | nothing |
-| M5 Max | T6051 | MBP 14"/16" Max | nothing |
+| M4 base | T8132 | MBP 14" base | m1n1 UART (upstream, 0x3ad200000); all else TBA |
+| M4 Pro | T6040 | MBP 14"/16" Pro | UART verified 0x429200000 (patch 0001); PMGR upstream |
+| M4 Max | T6041 | MBP 14"/16" Max | UART verified 0x429200000 (patch 0001); PMGR upstream |
+| M5 base | T8142 | Mac17,2-4 (J704/J813/J815) | UART verified 0x3a5200000 (patch 0001) |
+| M5 Pro | T6050 | Mac17,6-9 (J716/J714 c/s) | UART verified 0x505200000 (patch 0001) |
+| M5 Max | T6051 | — | absent from 25F71 IPSW; nothing confirmable |
 
 ## Dependency chain
 
