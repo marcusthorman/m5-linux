@@ -180,6 +180,20 @@ int sptm_uat_map_table(phys_addr_t parent_pte, phys_addr_t child_table,
 		       unsigned int level);
 int sptm_uat_unmap_table(phys_addr_t parent_pte);
 
+/*
+ * Opaque per-mm SPTM state handle. Allocated by sptm_uat_init_state()
+ * during init_new_context(); passed as the leading arg to nearly every
+ * UAT call (the SPTM-side handler reads x0 as a sanitized state pointer
+ * via the validator at 0xfffffff0270c9604).
+ *
+ * TODO(impl): wire into struct mm_struct (probably arch-specific field
+ * arch_struct_mm or a side-table) and initialize during context creation.
+ */
+struct sptm_uat_state;
+
+/* Get a state object's root-table paddr for a given ASID. */
+phys_addr_t sptm_uat_get_root_table_paddr(struct sptm_uat_state *state, u16 asid);
+
 /* TLB invalidation — replaces direct TLBI from EL1. */
 void sptm_broadcast_tlbi_all(void);
 void sptm_broadcast_tlbi_asid(u16 asid);
