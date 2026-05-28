@@ -24,17 +24,38 @@ on M2 and M3 too. The only listed Apple Silicon Mac chip without SPTM is the
 original M1 (t8103), which is exactly the platform Asahi's hypervisor RE was
 built on.
 
-Two caveats this firmware alone can't resolve: (1) "boot-loaded" is proven from
-the manifest, but whether SPTM *enforces* the same restrictions that break the
-m1n1 hypervisor on M2/M3 as it does on M4 is not established here — it may be
-why Asahi's M2/M3 support (built against earlier macOS) still works. (2) The
-full **Exclaves/ExclaveOS** secure world is newer: `Ap,ExclaveOS*` appears as a
-boot component only for A18 Pro, M5, and M5 Pro — not M3/M4 — though every SPTM
-build (incl. M3) contains the XNU↔TXM transition code.
+Two caveats: (1) "boot-loaded" is proven from the manifest, but whether SPTM
+*enforces* the same hypervisor-breaking restrictions on M2/M3 as on M4 is not
+established here. (2) The full **Exclaves/ExclaveOS** secure world is newer:
+`Ap,ExclaveOS*` appears as a boot component only for A18 Pro, M5, and M5 Pro —
+not M3/M4 — though every SPTM build (incl. M3) contains the XNU↔TXM code.
 
-Practical upshot for this project: the SPTM protocol RE and the XNU-shim below
-are the **same binary/version on M2/M3/M4/M5** (see below), so the work targets
-all of them, not just M4.
+### Dating SPTM activation on M3 (manifest diff across releases)
+
+SPTM was **not** in M3's boot chain at launch and was added late. Diffing
+`Ap,SecurePageTableMonitor` for t8122 (M3) across releases — fetched remotely,
+manifest only, via `analysis/manifests/date-sptm-activation.sh`:
+
+| macOS | build   | M3 (t8122) SPTM | note |
+|-------|---------|-----------------|------|
+| 14.1  | 23B2077 | no  | M3 launch (Oct 2023) |
+| 15.0  | 24A335  | no  | Sequoia (M2 t8112 already **yes** here) |
+| 15.2  | 24C101  | no  | |
+| 15.4  | 24E248  | no  | |
+| 15.6  | 24G84   | no  | last Sequoia full IPSW |
+| 26.0  | 25A354  | **YES** | **activation point** |
+| 26.5  | 25F71   | yes | |
+
+So M3 got SPTM in its boot chain at **macOS 26.0 (25A354)** — not at the M3's
+2023 launch. Note the rollout was *not* newest-first: **M2 (t8112) already had
+SPTM at 15.0**, a year before M3. This resolves caveat (1) for M3: Asahi's M3
+support was built against Sonoma/Sequoia where M3 had **no** SPTM, which is why
+the hypervisor RE worked there. On **macOS 26.0+ an M3 now boots with SPTM**, so
+the hypervisor method would hit the same wall on M3 as on M4 with current macOS.
+
+Practical upshot: the SPTM protocol RE and the XNU-shim below are the **same
+binary/version on M2/M3/M4/M5**, so the work targets all of them — and M3 on
+current macOS is now in the same situation as M4, not exempt.
 
 ## Why it blocks Linux
 

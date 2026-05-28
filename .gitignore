@@ -6,6 +6,8 @@ analysis/*/extracted/
 analysis/*/fw/
 *.im4p
 *.payload
+# Downloaded BuildManifests (Apple firmware metadata) — re-fetch via the script
+analysis/manifests/*/
 
 # Python venv
 .venv/
