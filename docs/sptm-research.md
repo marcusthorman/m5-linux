@@ -53,9 +53,71 @@ support was built against Sonoma/Sequoia where M3 had **no** SPTM, which is why
 the hypervisor RE worked there. On **macOS 26.0+ an M3 now boots with SPTM**, so
 the hypervisor method would hit the same wall on M3 as on M4 with current macOS.
 
+**Per-SoC activation (from the same manifest diffs):**
+- **M2 (t8112):** SPTM by macOS 15.0 (earliest sampled; retrofitted to a 2022 chip).
+- **M4 (t8132):** SPTM from its launch-era OS (present at 15.2, M4's first appearance).
+  M4 was *born with* SPTM — there is no pre-SPTM macOS for M4, which is why the
+  community experienced this as "the M4 problem."
+- **M3 (t8122):** retrofitted only at macOS 26.0 (see table).
+
 Practical upshot: the SPTM protocol RE and the XNU-shim below are the **same
 binary/version on M2/M3/M4/M5**, so the work targets all of them — and M3 on
 current macOS is now in the same situation as M4, not exempt.
+
+## Reliability assessment: can the shim be 100% reliable?
+
+Short answer: **yes in the only sense that matters here** — deterministic
+success on *every* boot for a given pinned firmware + SoC — and **no** in the
+sense of "one artifact that works untouched across all future macOS versions."
+This matches how Asahi already operates (firmware-pinned, tracked per release),
+so it is a maintainable path, not a dead end. Evidence below.
+
+### No fundamental barrier (a non-XNU shim *can* pass)
+1. **SPTM does not attest the boot object.** Its boot-path verification is
+   page-table integrity (UAT `VIOLATION_*`) plus **hibernation** image HMAC/SHA
+   (`sptm_hib_verify_*`, `handoffHMAC`, `image*PagesHMAC`) — and we disable
+   hibernation for Linux. Code-signature / trust-cache enforcement lives in
+   **TXM** (`TXM_SLAB_CODE_SIGNATURE`, `TXM_SLAB_TRUST_CACHE`) and AMFI, which
+   Asahi already neutralizes via the **permissive boot policy** it requires.
+   So SPTM will not cryptographically reject a non-Apple handoff target.
+2. **The shim only uses the stable ABI** — `genter` + call numbers + the
+   dispatch-table registration protocol. It never calls SPTM's internal
+   addresses (the RE addresses like `0xa454c`/`0xec010` are for *understanding*,
+   not for the shim to branch to). SPTM's resident handler runs at whatever
+   address that build placed it.
+3. **Determinism:** the handoff is software state transitions. The only per-boot
+   inputs (`random-seed`, `cl4-entropy`) are supplied by iBoot via `/chosen` —
+   provided to us, not a challenge we must answer.
+
+### What it requires (the pinned-version model)
+SPTM is **versioned firmware that changes every release**: t8132 was
+`611.0.26` / 1130528 B at 26.0 and `611.120.6` / 1212448 B at 26.5 (+82 KB) —
+yet the architecture is *identical* (same `dispatch_state_machine`,
+`sptm_register_dispatch_table`, `XNU->TXM`, `Found illegal dispatch entry point`,
+same `b → bootstrap` entry; only addresses shift). So the shim is written
+against the **ABI**, not addresses, and validated **per pinned firmware** —
+exactly Asahi's existing firmware-pinning model. An OS update that bumps SPTM is
+handled like any firmware bump: re-pin + re-validate.
+
+### Residual risks (must be validated, mostly on hardware)
+- **Multi-die (Pro/Max/Ultra):** per-die SPTM / secondary-CPU GL2 bring-up — the
+  M5 Pro binary is larger (multi-die handling). Needs validation on real Pro/Max.
+- **Registration must be exactly right:** a wrong dispatch entry point or
+  permission set → SPTM rejects (`illegal dispatch entry point`) or panics.
+  Deterministic, but unforgiving.
+- **ABI drift across *major* macOS versions:** if Apple restructures the
+  XNU↔SPTM ABI, the shim needs a per-version update (maintenance, not a wall).
+- **Statics can't prove a negative:** there may be a check in the `(0x0:0xf)` /
+  registration path that only running on M4/M5 hardware will reveal.
+- **M5/A18 Pro ship TXM/ExclaveOS as boot components** (M3/M4 do not) — an extra
+  surface to handle on those chips specifically.
+
+### Bottom line
+A shim that succeeds 100% of the time on a given pinned firmware + SoC is
+achievable and fits Asahi's model. A single forever-universal binary is not,
+because SPTM is per-release firmware. The remaining work is: (a) nail the
+dispatch-table **registration** protocol, (b) per-SoC / per-die validation on
+hardware, (c) track it per firmware — which Asahi tooling already does.
 
 ## Why it blocks Linux
 

@@ -11,7 +11,7 @@ TOOL="$DIR/../../tools/ipsw"
 DEV="${1:-Mac15,3}"
 
 # Sample across the release history. Add/adjust versions as needed.
-VERSIONS=(14.1 15.0 15.2 15.4 15.6 26.0 26.5)
+VERSIONS=(14.1 15.0 15.1 15.2 15.4 15.6 26.0 26.5)
 
 for v in "${VERSIONS[@]}"; do
     out="$DIR/$v"; mkdir -p "$out"
@@ -19,5 +19,5 @@ for v in "${VERSIONS[@]}"; do
         (cd "$out" && "$TOOL" download ipsw --device "$DEV" --version "$v" \
             --pattern '^BuildManifest.plist$' >/dev/null 2>&1) || { echo "$v: unavailable"; continue; }
     fi
-    python3 "$DIR/check2.py" "$out"/*/BuildManifest.plist 2>/dev/null | grep -E "^[0-9]|M3 |M2 " || true
+    python3 "$DIR/check2.py" "$out"/*/BuildManifest.plist 2>/dev/null | grep -E "^[0-9]|M2 |M3 |M4 |M5 " || true
 done
