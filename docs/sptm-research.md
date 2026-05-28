@@ -104,11 +104,47 @@ Dispatcher `0xfffffff0270a454c`:
    (`[state+0x20]`) and tail-call a common trampoline **`0xfffffff0270ec010`**
    with the entry type in x0 (3) and a packed value in x1.
 
-So the `(subsys, idx)` decode — including the `(0x0:0xf)` boot handoff — lives
-in the C dispatcher reached via `0xfffffff0270ec010`, which reads the saved x16
-from `save+0x90`. **Next target:** follow `0xfffffff0270ec010` to the x16
-dispatch table, locate the `(0x0:0xf)` handler, and correlate it with the
-`handoff_region` struct (`micro_magic`/`powered_off`) the shim must present.
+The trampoline `0xfffffff0270ec010` is **`dispatch_state_machine`** — and this
+reframes everything (see below).
+
+### SPTM is a security-domain state machine, not a flat syscall table
+
+`0xfffffff0270ec010` is the state-machine dispatcher. Its error strings name the
+model directly: `dispatch_state_machine`, `state_to_string`, `invalid state`,
+`invalid event type`, `invalid next state`, and `invalid state transition - no
+action set for the transition. current_state: %s, event_type: %s,
+event_metadata: %#llx`. So a "call" is an **(state, event) → action/next-state**
+transition, keyed per **caller_domain** (`cpu_data->logical_id`,
+`event_metadata`).
+
+Dispatch tables are **registered at runtime, not hardcoded**:
+`sptm_register_dispatch_table(table_id, …)` and
+`register_sptm_iommu_dispatch_table`. Each entry is
+`{ dispatch_entry_point, permissions }` and SPTM validates the target against
+per-domain permissions — `[SPTM Dispatch] Found illegal dispatch entry point.
+caller_domain: %d, entry_point: %#llx, dispatch_target: %#llx`. The table seen
+at `0xfffffff02701a770` (32-byte entries `{type, handler@+8 chained-fixup,
+flags, mask}`; e.g. handlers `0xfffffff0270e8624/0e8638`) is one such table.
+
+There are at least three domains: **XNU ↔ SPTM ↔ TXM**. SPTM guards transitions
+between them — `Invalid hop detected when transitioning XNU->TXM`, `txm_stack`,
+`phys_to_type(txm_stack)` — which is why TXM ships as its own monitor
+(`txm.macosx.release.im4p`). Also present: `sptm_register_xnu_exc_return` /
+`xnu_exc_return_handler` (SPTM owns XNU's exception-return path).
+
+**Implication for the shim:** the boot handoff is not "make one call." To stand
+in for XNU, the boot object must register a valid dispatch table (entry points +
+permissions SPTM will accept) and drive the state machine from its bootstrap
+state into the running state. `(0x0:0xf)` is most likely the *event* that
+performs that registration / transition.
+
+**Next targets, in order:**
+1. `sptm_register_dispatch_table` — find it (string xref at `0xfffffff027012d32`
+   region), learn the table_id space, entry format, and permission model.
+2. The state/event table behind `dispatch_state_machine` — enumerate states,
+   events, and which transition `(0x0:0xf)` drives.
+3. Correlate the registered XNU table + `handoff_region`
+   (`micro_magic`/`powered_off`) with XNU's zeroed `__DATA_SPTM`.
 
 ---
 
@@ -373,7 +409,9 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | Number of subsystems                            | ✓ done  | 9 active (0x0, 0x3, 0x5–0x7, 0x9–0xb, 0xd) |
 | SPTM binary accessibility                       | ✓ done  | LZFSE, **unencrypted** ARM64e Mach-O; ver 611.120.6 M4=M5 |
 | SPTM GENTER dispatcher located                  | ✓ done  | runtime `gxf_entry_el1 = 0xfffffff0270a454c` (T8132) |
-| `(0x0:0xf)` handler semantics                   | ✗ open  | follow trampoline `0xfffffff0270ec010` → x16 table |
+| SPTM dispatch model                             | ✓ done  | **domain state machine** (`dispatch_state_machine` @ `0xec010`); registered tables w/ per-domain permissions; XNU↔SPTM↔TXM |
+| `sptm_register_dispatch_table` semantics        | ✗ open  | table_id space, entry format, permission model |
+| `(0x0:0xf)` → which state transition            | ✗ open  | enumerate states/events behind the state machine |
 | m1n1 shim entry mechanism                       | ◑ draft | patch 0004 — genter stub + (0x0:0xf), unverified |
 | What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE (drives shim pre-state) |
 | Minimum call sequence for shim                  | ✗ open  | Likely just `(0x0:0xf)` but unverified   |
