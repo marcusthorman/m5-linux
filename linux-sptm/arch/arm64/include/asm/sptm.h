@@ -22,6 +22,8 @@
 
 #include <linux/types.h>
 
+struct mm_struct;
+
 #ifdef CONFIG_ARM64_APPLE_SPTM
 
 /*
@@ -45,13 +47,13 @@
  *
  * See analysis/sptm/sptm-subsys0-labels.csv in the m5-linux repo.
  */
-#define SPTM_CALL_RETYPE                 SPTM_PACK(0x0, 0x01)  /* CONFIRMED: sptm_retype */
-#define SPTM_CALL_MAP_OR_UAT_MAP_TABLE   SPTM_PACK(0x0, 0x02)  /* MED: sptm_map_page or sptm_uat_map_table */
+#define SPTM_CALL_RETYPE                 SPTM_PACK(0x0, 0x01)  /* CONFIRMED: sptm_retype (only stub still carrying its symbol in com.apple.kernel) */
+#define SPTM_CALL_MAP_OR_UAT_MAP_TABLE   SPTM_PACK(0x0, 0x02)  /* MED: sptm_uat_map_table */
 #define SPTM_CALL_UAT_GET_INFO           SPTM_PACK(0x0, 0x03)  /* MED: sptm_uat_get_info */
-#define SPTM_CALL_ROOT_TABLE_PADDR       SPTM_PACK(0x0, 0x04)  /* MED+: uat_state_get_root_table_paddr */
-#define SPTM_CALL_UPDATE_REGION          SPTM_PACK(0x0, 0x05)  /* MED+: sptm_update_region */
+#define SPTM_CALL_ROOT_TABLE_PADDR       SPTM_PACK(0x0, 0x04)  /* MED+: uat_state_get_root_table_paddr (companion of 0x1e) */
+#define SPTM_CALL_UPDATE_REGION          SPTM_PACK(0x0, 0x05)  /* HIGH: sptm_update_region — caller has "range crosses DRAM boundary" */
 #define SPTM_CALL_DROP_TABLE_REFCNTS     SPTM_PACK(0x0, 0x06)  /* LOW: sptm_drop_table_refcnts / get_info */
-#define SPTM_CALL_DISJOINT_OP            SPTM_PACK(0x0, 0x07)  /* LOW: sptm_disjoint_op */
+#define SPTM_CALL_DISJOINT_OP            SPTM_PACK(0x0, 0x07)  /* HIGH: sptm_disjoint_op — caller has "failed to map CPU copy-window VA" */
 #define SPTM_CALL_UPDATE_DISJOINT        SPTM_PACK(0x0, 0x08)  /* LOW: sptm_update_disjoint */
 #define SPTM_CALL_CONFIGURE_SHARED_REGION SPTM_PACK(0x0, 0x09) /* HIGH: sptm_configure_shared_region */
 #define SPTM_CALL_UNNEST_REGION          SPTM_PACK(0x0, 0x0a)  /* HIGH: sptm_unnest_region */
@@ -65,7 +67,7 @@
 #define SPTM_CALL_REGISTER_CPU_OR_INIT   SPTM_PACK(0x0, 0x12)  /* HIGH (boot): sptm_register_cpu */
 #define SPTM_CALL_CPU_INIT_AUX           SPTM_PACK(0x0, 0x13)  /* HIGH (boot): sptm_n_cpus / cpu_init aux */
 /*                                       SPTM_PACK(0x0, 0x14)   LOW: debug/IRQ helper */
-#define SPTM_CALL_MAP_PAGE               SPTM_PACK(0x0, 0x15)  /* HIGH: sptm_map_page (leaf PTE install) */
+#define SPTM_CALL_MAP_PAGE               SPTM_PACK(0x0, 0x15)  /* HIGH: sptm_map_page (leaf PTE install) — caller has "pmap %p (pte %p): wired count underflow" */
 /*           0x16..0x1d                  no XNU callers — not in Linux's API surface */
 #define SPTM_CALL_UAT_GET_ROOT_TABLE_PADDR SPTM_PACK(0x0, 0x1e) /* HIGH: uat_state_get_root_table_paddr */
 #define SPTM_CALL_REGISTER_IO_FRAME      SPTM_PACK(0x0, 0x1f)  /* MED+: sptm_register_io_frame */
@@ -75,8 +77,8 @@
 #define SPTM_CALL_NEST_REGION            SPTM_PACK(0x0, 0x27)  /* MED: sptm_nest_region */
 #define SPTM_CALL_NEST_REGION_ALT        SPTM_PACK(0x0, 0x28)  /* MED: paired with 0x27 */
 /*           0x29..0x2a                  no XNU callers */
-#define SPTM_CALL_UAT_UNMAP_TABLE        SPTM_PACK(0x0, 0x2b)  /* HIGH: sptm_uat_unmap_table */
-#define SPTM_CALL_UNMAP_TABLE            SPTM_PACK(0x0, 0x2c)  /* HIGH: sptm_unmap_table / unmap_continue */
+#define SPTM_CALL_UAT_UNMAP_TABLE        SPTM_PACK(0x0, 0x2b)  /* HIGH: sptm_uat_unmap_table — caller has "attempt to remove mappings from commpage pmap" */
+#define SPTM_CALL_UNMAP_TABLE            SPTM_PACK(0x0, 0x2c)  /* HIGH: sptm_unmap_table / unmap_continue — caller has "sptm_get_table_mapping_count returned failure" */
 /*                                       SPTM_PACK(0x0, 0x2d)   LOW: debug/IRQ helper */
 #define SPTM_CALL_REGISTER_XNU_EXC_RETURN_ALT SPTM_PACK(0x0, 0x2e) /* MED+ */
 /*           0x2f..0x31                  no XNU callers */
@@ -173,26 +175,57 @@ int sptm_retype(phys_addr_t paddr, enum sptm_frame_type from,
 
 /* Install a leaf PTE. SPTM-side validates that the target frame's type is
  * compatible with the requested mapping permissions. */
-int sptm_set_pte(phys_addr_t ptep, u64 pte_val);
+int sptm_set_pte(struct mm_struct *mm, phys_addr_t ptep, u64 pte_val);
 
 /* Install / remove a non-leaf table at a given level. */
-int sptm_uat_map_table(phys_addr_t parent_pte, phys_addr_t child_table,
-		       unsigned int level);
-int sptm_uat_unmap_table(phys_addr_t parent_pte);
+int sptm_uat_map_table(struct mm_struct *mm, phys_addr_t parent_pte,
+		       phys_addr_t child_table, unsigned int level);
+int sptm_uat_unmap_table(struct mm_struct *mm, phys_addr_t parent_pte);
 
 /*
- * Opaque per-mm SPTM state handle. Allocated by sptm_uat_init_state()
- * during init_new_context(); passed as the leading arg to nearly every
- * UAT call (the SPTM-side handler reads x0 as a sanitized state pointer
- * via the validator at 0xfffffff0270c9604).
+ * Per-mm SPTM state handle.
  *
- * TODO(impl): wire into struct mm_struct (probably arch-specific field
- * arch_struct_mm or a side-table) and initialize during context creation.
+ * SPTM-side layout (T8132 26.5, observed from
+ *   uat_state_get_root_table_paddr @ 0xfffffff0270b6f68 and the state
+ *   sanitizer @ 0xfffffff0270c9604):
+ *
+ *     +0x00  u8   mode/type tag (tst w8,#0x5 — mode bits)
+ *     +0x08  u64  paddr-like field (context_id or ttbat paddr)
+ *     +0x18  u16  currently-bound ASID; 0xffff = free
+ *
+ * The sanitizer enforces that the pointer:
+ *   (1) lives in the registered SPTM state-object list,
+ *   (2) is 16 KB aligned, and
+ *   (3) falls inside [sptm_first_phys .. sptm_last_phys] (range globals
+ *       at __DATA+0xd00 / +0xd08 in the SPTM binary).
+ *
+ * That means Linux cannot kmalloc a state; it must allocate a 16 KB page,
+ * retype it to a UAT-state frame type via sptm_retype, then SPTM owns the
+ * fields. From Linux's side this struct is just a paddr-bearing handle.
  */
-struct sptm_uat_state;
+struct sptm_uat_state {
+	phys_addr_t paddr;
+};
+
+/*
+ * Lifecycle: per Linux address-space.
+ *
+ *   sptm_uat_init_state(mm)     — allocate a state for this mm, register
+ *                                  it with SPTM, and stash the handle so
+ *                                  the wrappers can find it. Call from
+ *                                  init_new_context().
+ *   sptm_uat_destroy_state(mm)  — tear down and free. Call from
+ *                                  arch_exit_mmap().
+ *   sptm_uat_state_for(mm)      — look up the handle for this mm (NULL
+ *                                  if not initialized; init_mm has no
+ *                                  state in this model).
+ */
+int  sptm_uat_init_state(struct mm_struct *mm);
+void sptm_uat_destroy_state(struct mm_struct *mm);
+struct sptm_uat_state *sptm_uat_state_for(struct mm_struct *mm);
 
 /* Get a state object's root-table paddr for a given ASID. */
-phys_addr_t sptm_uat_get_root_table_paddr(struct sptm_uat_state *state, u16 asid);
+phys_addr_t sptm_uat_get_root_table_paddr(struct mm_struct *mm, u16 asid);
 
 /* TLB invalidation — replaces direct TLBI from EL1. */
 void sptm_broadcast_tlbi_all(void);
@@ -200,7 +233,7 @@ void sptm_broadcast_tlbi_asid(u16 asid);
 void sptm_broadcast_tlbi_va(unsigned long va, u16 asid);
 
 /* Switch the active page-table root (TTBR1/TTBR0). Replaces direct msr ttbr*. */
-int sptm_switch_root(phys_addr_t new_root, u16 asid);
+int sptm_switch_root(struct mm_struct *mm, phys_addr_t new_root, u16 asid);
 
 /* Per-CPU registration during secondary bring-up. */
 int sptm_register_cpu(unsigned int cpu);
@@ -212,6 +245,8 @@ int sptm_register_cpu(unsigned int cpu);
 static inline bool sptm_present(void) { return false; }
 static inline int sptm_boot_handoff(void) { return 0; }
 static inline int sptm_register_cpu(unsigned int cpu) { return 0; }
+static inline int sptm_uat_init_state(struct mm_struct *mm) { return 0; }
+static inline void sptm_uat_destroy_state(struct mm_struct *mm) { }
 
 #endif /* CONFIG_ARM64_APPLE_SPTM */
 

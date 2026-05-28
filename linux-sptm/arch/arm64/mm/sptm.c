@@ -24,6 +24,12 @@
 #include <linux/types.h>
 #include <linux/printk.h>
 #include <linux/cpu.h>
+#include <linux/slab.h>
+#include <linux/gfp.h>
+#include <linux/mm.h>
+#include <linux/mm_types.h>
+#include <linux/xarray.h>
+#include <linux/spinlock.h>
 #include <asm/sptm.h>
 
 /*
@@ -130,20 +136,135 @@ int __init sptm_boot_handoff(void)
  *   Other wrappers below still TODO — see per-function notes.
  * ============================================================ */
 
+/* SPTM page granule on Apple Silicon. Distinct from Linux's PAGE_SIZE
+ * (which on arm64 can be 4K/16K/64K depending on config); SPTM always
+ * works in 16 KB units. The state object itself must live in a 16 KB-
+ * aligned physical page (verified from sanitizer @ 0xfffffff0270c9604,
+ * which masks the candidate state ptr with 0x3fff and demands zero). */
+#define SPTM_GRANULE_SIZE  0x4000UL
+
 /*
- * sptm_uat_state — opaque handle to SPTM's per-address-space state.
+ * sptm_uat_state lookup — side-table keyed by mm pointer.
  *
- * Allocated by sptm_uat_init_state at mm creation; passed as the first
- * arg to nearly every UAT call. Embedded in mm_struct via an arch-specific
- * field, or kept in a side-table keyed by mm pointer.
- *
- * The state object's layout is opaque to Linux (SPTM owns it). We only
- * hold a paddr-equivalent handle. Field offsets observed in SPTM-side
- * (from `uat_instance->...` strings): handoff_region.micro_magic,
- * handoff_region.powered_off, ttbat_region.paddr, state_object_size,
- * mode (uat_instance->mode), context_id (state_object->context_id).
+ * Rationale: avoid surgery on mm_context_t (which lives in core asm/mmu.h
+ * and is touched by mainline). The cost is one xa_load() per wrapper call;
+ * if that shows up in profiles we can promote to an mm_context_t field.
  */
-struct sptm_uat_state;
+static DEFINE_XARRAY(sptm_uat_states);
+
+struct sptm_uat_state *sptm_uat_state_for(struct mm_struct *mm)
+{
+	if (!mm)
+		return NULL;
+	return xa_load(&sptm_uat_states, (unsigned long)mm);
+}
+
+/*
+ * Initialize an SPTM UAT state for this mm.
+ *
+ * Steps (per SPTM-side requirements observed in the sanitizer):
+ *   1. Allocate a 16 KB-aligned page from the kernel — this becomes the
+ *      backing storage for SPTM's state object.
+ *   2. Retype that page to the UAT-state frame type so it lives in the
+ *      range SPTM accepts (between sptm_first_phys/sptm_last_phys and
+ *      registered in the state-object list).
+ *   3. Issue the SPTM "init state" call so SPTM populates the object's
+ *      fields (mode @ +0x00, paddr @ +0x08, ASID slot @ +0x18 = 0xffff).
+ *   4. Stash the handle in the side-table keyed by mm.
+ *
+ * TODO(impl): step 3 — the exact (subsys, idx) for `sptm_uat_init_state`
+ * is not yet pinned. Both the SPTM-side handler body (at SPTM VMA
+ * 0xfffffff0270ba008) and the XNU-side stub are dispatched **indirectly**
+ * (PAC-signed blraa through a function-pointer table in __DATA_CONST),
+ * so neither static BL-search nor cstring-xref recovers the idx. The
+ * candidate is one of {0x16..0x1d, 0x22..0x26, 0x29, 0x2a, 0x2d, 0x2f..0x31}
+ * — the subsys-0 stubs with zero direct callers in the fileset-wide scan.
+ * See analysis/sptm/sptm-stub-callers.md. Pin by chained-fixup decode
+ * of the XNU vtable or by hardware experiment.
+ *
+ * TODO(impl): step 2 — the numeric value of SPTM_FRAME_XNU_UAT_STATE
+ * (the right frame type to retype TO) is not yet pinned. The enum name
+ * is XNU_UAT_STATE per SPTM-side strings; the numeric value is unknown.
+ */
+int sptm_uat_init_state(struct mm_struct *mm)
+{
+	struct sptm_uat_state *state;
+	void *page;
+
+	if (!sptm_present() || !mm)
+		return 0;
+
+	state = kzalloc(sizeof(*state), GFP_KERNEL);
+	if (!state)
+		return -ENOMEM;
+
+	page = alloc_pages_exact(SPTM_GRANULE_SIZE, GFP_KERNEL | __GFP_ZERO);
+	if (!page) {
+		kfree(state);
+		return -ENOMEM;
+	}
+
+	state->paddr = virt_to_phys(page);
+
+	/* TODO(impl): retype state->paddr from SPTM_FRAME_XNU_DEFAULT to
+	 * SPTM_FRAME_XNU_UAT_STATE here. Skipped while the numeric frame
+	 * type is unknown — calling sptm_retype with a wrong `to` will
+	 * make the sanitizer reject the state on first UAT call. */
+
+	/* TODO(impl): issue the SPTM "init state" call so SPTM registers
+	 * state->paddr in its state-object list and primes the fields. */
+
+	if (xa_store(&sptm_uat_states, (unsigned long)mm, state,
+		     GFP_KERNEL) != NULL) {
+		/* This mm was already registered — leak our new state's page
+		 * back? No — destroy our locally-allocated one. */
+		free_pages_exact(page, SPTM_GRANULE_SIZE);
+		kfree(state);
+		return -EEXIST;
+	}
+
+	pr_info_once("sptm: UAT state allocated for first mm (paddr=%pa)\n",
+		     &state->paddr);
+	return 0;
+}
+
+void sptm_uat_destroy_state(struct mm_struct *mm)
+{
+	struct sptm_uat_state *state;
+
+	if (!sptm_present() || !mm)
+		return;
+
+	state = xa_erase(&sptm_uat_states, (unsigned long)mm);
+	if (!state)
+		return;
+
+	/* TODO(impl): issue the SPTM "destroy state" call so SPTM removes
+	 * state->paddr from its state-object list, then retype the page
+	 * back to SPTM_FRAME_XNU_DEFAULT before freeing. Without that, the
+	 * page can't safely re-enter the buddy allocator. */
+
+	if (state->paddr)
+		free_pages_exact(phys_to_virt(state->paddr),
+				 SPTM_GRANULE_SIZE);
+	kfree(state);
+}
+
+/* Helper: return the raw state pointer SPTM expects in x0, or 0 if the
+ * mm has no state (e.g. init_mm before SPTM is fully up). Callers that
+ * get 0 here will fail SPTM-side validation — surface a warning so we
+ * don't silently panic on hardware. */
+static u64 sptm_state_arg(struct mm_struct *mm)
+{
+	struct sptm_uat_state *state = sptm_uat_state_for(mm);
+
+	if (!state) {
+		pr_warn_once("sptm: wrapper called with no UAT state for mm=%px\n",
+			     mm);
+		return 0;
+	}
+	return (u64)state->paddr;
+}
 
 int sptm_retype(phys_addr_t paddr, enum sptm_frame_type from,
 		enum sptm_frame_type to)
@@ -169,75 +290,61 @@ int sptm_retype(phys_addr_t paddr, enum sptm_frame_type from,
 	return (int)sptm_call(SPTM_CALL_RETYPE, (u64)paddr, (u64)to, (u64)from, 0);
 }
 
-int sptm_set_pte(phys_addr_t ptep, u64 pte_val)
+int sptm_set_pte(struct mm_struct *mm, phys_addr_t ptep, u64 pte_val)
 {
-	/* (0x0, 0x15). Verified handler at 0xfffffff0270f350c — but
-	 * signature shows 4 args, NOT 2. SPTM-side handler reads:
+	/* (0x0, 0x15). Verified handler at 0xfffffff0270f350c — 4 args:
 	 *   x0 = state (sanitized by 0xfffffff0270f4100)
-	 *   x1, x2, x3 = (saved as x21, x23, x20)
+	 *   x1, x2, x3 = saved as x21, x23, x20
 	 *   x3 low byte: bound < 0x2 (likely a perm/mode flag)
 	 *
-	 * So sptm_set_pte() needs at least:
-	 *   state, paddr_or_pte, addr, perm_flag
-	 *
-	 * The current 2-arg wrapper is WRONG and will fail validation.
-	 * TODO(impl): redesign signature once we know how Linux's
-	 * __set_pte calls map onto this. The 4 args strongly suggest
-	 * SPTM expects (state, paddr_to_install, vaddr_target, perms).
+	 * The 4 args strongly suggest (state, paddr_to_install, vaddr_target,
+	 * perms). Current (ptep, pte_val) packing is best-effort until we
+	 * pin the exact pmap_arm.c caller-side mapping.
 	 */
-	pr_warn_once("sptm: sptm_set_pte() wrapper signature wrong; needs state+vaddr+perm rework\n");
-	return (int)sptm_call(SPTM_CALL_MAP_PAGE, 0 /* state TODO */,
+	pr_warn_once("sptm: sptm_set_pte() arg layout (paddr/vaddr/perm) still tentative\n");
+	return (int)sptm_call(SPTM_CALL_MAP_PAGE, sptm_state_arg(mm),
 			      (u64)ptep, pte_val, 0);
 }
 
-int sptm_uat_map_table(phys_addr_t parent_pte, phys_addr_t child_table,
-		       unsigned int level)
+int sptm_uat_map_table(struct mm_struct *mm, phys_addr_t parent_pte,
+		       phys_addr_t child_table, unsigned int level)
 {
 	/* (0x0, 0x02). Verified handler at 0xfffffff0270b993c:
 	 *   x0 = state (sanitized by 0xfffffff0270c9604, w1=2 w2=0xf)
-	 *   x1 = arg1 (saved as x22, later used as memory descriptor base
-	 *              with size 0x4000 = 16 KB page)
-	 *   x2 = arg2 (saved as x21)
-	 *   x3 = arg3 (saved as x20)
-	 *
-	 * Confirmed it's a 4-arg call. Our (parent_pte, child_table, level)
-	 * + the leading state object = 4 args total. Likely:
-	 *   sptm_uat_map_table(state, parent_pte, child_table, level)
+	 *   x1, x2, x3 = saved as x22, x21, x20
+	 *   x1 later used as memory-descriptor base with size 0x4000 (16 KB).
 	 */
-	pr_warn_once("sptm: sptm_uat_map_table() wrapper needs state arg added\n");
 	return (int)sptm_call(SPTM_CALL_MAP_OR_UAT_MAP_TABLE,
-			      0 /* state TODO */, (u64)parent_pte,
+			      sptm_state_arg(mm), (u64)parent_pte,
 			      (u64)child_table, level);
 }
 
-int sptm_uat_unmap_table(phys_addr_t parent_pte)
+int sptm_uat_unmap_table(struct mm_struct *mm, phys_addr_t parent_pte)
 {
 	/* HIGH: (0x0, 0x2b). Verified handler at 0xfffffff0270b9640:
 	 *   x0 = state (sanitized by 0xfffffff0270c9604, w1=2 w2=0xf)
 	 *   x1 = arg1 (saved as x21)
 	 *   x2 = arg2 (saved as x20)
 	 *
-	 * 3-arg call. Caller-side: pmap_remove_options_internal. Our
-	 * 1-arg wrapper is missing the state + a second value.
-	 * TODO(impl): redesign.
+	 * Caller-side: pmap_remove_options_internal. The third arg is still
+	 * TBD — pass 0 until pmap_arm.c reading pins it.
 	 */
-	pr_warn_once("sptm: sptm_uat_unmap_table() wrapper needs state + 2nd arg\n");
+	pr_warn_once("sptm: sptm_uat_unmap_table() 3rd arg pending pmap_arm.c read\n");
 	return (int)sptm_call(SPTM_CALL_UAT_UNMAP_TABLE,
-			      0 /* state TODO */, (u64)parent_pte, 0, 0);
+			      sptm_state_arg(mm), (u64)parent_pte, 0, 0);
 }
 
-phys_addr_t sptm_uat_get_root_table_paddr(struct sptm_uat_state *state, u16 asid)
+phys_addr_t sptm_uat_get_root_table_paddr(struct mm_struct *mm, u16 asid)
 {
 	/* HIGH: (0x0, 0x1e). Verified handler `uat_state_get_root_table_paddr`
 	 * at 0xfffffff0270b6f68:
 	 *   x0 = state (sanitized by 0xfffffff0270c9604, w1=2 w2=5)
-	 *   x1 = asid (16-bit; bound: < 0x40, suggesting per-state ASID
-	 *              index space; the 0x10000 ASID limit is per-system)
-	 * Returns: u16 read from [x0+0x18] — the root table paddr or an
-	 * index into the TTBAT region. (TODO: confirm exact return shape.)
+	 *   x1 = asid (16-bit; bound: < 0x40, per-state ASID index space)
+	 * Returns: u16 read from [x0+0x18] — the ASID-slot value, which is
+	 * either a TTBAT index or the root-table paddr. (TODO: confirm.)
 	 */
 	return (phys_addr_t)sptm_call(SPTM_CALL_UAT_GET_ROOT_TABLE_PADDR,
-				      (u64)state, asid, 0, 0);
+				      sptm_state_arg(mm), asid, 0, 0);
 }
 
 void sptm_broadcast_tlbi_all(void)
@@ -264,24 +371,23 @@ void sptm_broadcast_tlbi_va(unsigned long va, u16 asid)
 	(void)va; (void)asid;
 }
 
-int sptm_switch_root(phys_addr_t new_root, u16 asid)
+int sptm_switch_root(struct mm_struct *mm, phys_addr_t new_root, u16 asid)
 {
 	/* HIGH: (0x0, 0x0d). Verified handler at 0xfffffff0270fa6b8:
-	 *   x0 = (used implicitly — possibly a CPU-local or state pointer)
-	 *   x1 = flags/value (saved as x21, then `tst w21, #0xfea4` for
-	 *        a mask check — packed flags + value)
+	 *   x0 = state/CPU pointer (sanitized) — passing the per-mm state.
+	 *   x1 = flags/value (saved as x21, then `tst w21, #0xfea4` mask).
 	 *   x2 = arg (saved as x20)
-	 *   Must be in GL2 (currentg != 0; cbz branches to error path).
-	 *   Reads TTBR0_EL1 (saves x22) — operates on user-space root.
+	 *   Must be in GL2 (currentg != 0; cbz → error). Reads TTBR0_EL1
+	 *   for save/restore — operates on the active user-space root.
 	 *
-	 * This is operating on the *active* page-table root for the current
-	 * CPU, not a generic switch operation. Our 2-arg wrapper is missing
-	 * the leading state/CPU arg.
-	 * TODO(impl): match against pmap_switch_internal caller-side context.
+	 * GL2 requirement: Linux runs at EL1; this call cannot be invoked
+	 * directly. It is reachable only via an EL2-side trampoline or
+	 * (more likely) by routing through m1n1 / the boot-time shim.
+	 * Wrapper kept here for completeness; runtime hookup TBD.
 	 */
-	pr_warn_once("sptm: sptm_switch_root() wrapper signature unverified\n");
+	pr_warn_once("sptm: sptm_switch_root() requires GL2 — not directly callable from EL1\n");
 	return (int)sptm_call(SPTM_CALL_SWITCH_ROOT,
-			      0 /* state/cpu TODO */, (u64)new_root, asid, 0);
+			      sptm_state_arg(mm), (u64)new_root, asid, 0);
 }
 
 int sptm_register_cpu(unsigned int cpu)

@@ -1,0 +1,686 @@
+
+[IPSW Info]
+===========
+Version        = 26.5
+BuildVersion   = 25F71
+OS Type        = Production
+FileSystem     = 094-56453-087.dmg.aea
+SystemOS       = 094-56679-089.dmg.aea
+AppOS          = 094-56385-096.dmg
+ExclaveOS      = 094-56699-097.dmg.aea
+RestoreRamDisk = [094-56195-095.dmg 094-55986-095.dmg]
+
+Devices
+-------
+
+MacBook Pro (16-inch, M5 Pro)
+ > Mac17,8_J716SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:28:19 PDT
+   - KernelCache: kernelcache.release.mac17j
+   - CPU: M5 Pro (), ID: t6050
+   - BootLoaders
+       * iBEC.j716s.RELEASE.im4p
+       * iBoot.j716s.RELEASE.im4p
+       * iBSS.j716s.RELEASE.im4p
+       * LLB.j716s.RELEASE.im4p
+       * sep-firmware.j716s.RELEASE.im4p
+
+Mac Pro (2023)
+ > Mac14,8_J180DAP_25F71
+   - TimeStamp: 18 Apr 2026 16:18:21 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Ultra (ARMv8.5-A), ID: t6022
+   - BootLoaders
+       * iBEC.j180d.RELEASE.im4p
+       * iBoot.j180d.RELEASE.im4p
+       * iBSS.j180d.RELEASE.im4p
+       * LLB.j180d.RELEASE.im4p
+       * sep-firmware.j180d.RELEASE.im4p
+
+MacBook Air (M1, 2020)
+ > MacBookAir10,1_J313AP_25F71
+   - TimeStamp: 18 Apr 2026 16:20:05 PDT
+   - KernelCache: kernelcache.release.mac13g
+   - CPU: M1 (ARMv8.5-A), ID: t8103
+   - BootLoaders
+       * iBEC.j313.RELEASE.im4p
+       * iBoot.j313.RELEASE.im4p
+       * iBSS.j313.RELEASE.im4p
+       * LLB.j313.RELEASE.im4p
+       * sep-firmware.j313.RELEASE.im4p
+
+Mac Studio
+ > Mac13,2_J375DAP_25F71
+   - TimeStamp: 18 Apr 2026 16:21:01 PDT
+   - KernelCache: kernelcache.release.mac13j
+   - CPU: M1 Ultra (ARMv8.5-A), ID: t6002
+   - BootLoaders
+       * iBEC.j375d.RELEASE.im4p
+       * iBoot.j375d.RELEASE.im4p
+       * iBSS.j375d.RELEASE.im4p
+       * LLB.j375d.RELEASE.im4p
+       * sep-firmware.j375d.RELEASE.im4p
+
+MacBook Pro (16-inch, 2023)
+ > Mac14,10_J416SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:21:57 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Pro (ARMv8.5-A), ID: t6020
+   - BootLoaders
+       * iBEC.j416s.RELEASE.im4p
+       * iBoot.j416s.RELEASE.im4p
+       * iBSS.j416s.RELEASE.im4p
+       * LLB.j416s.RELEASE.im4p
+       * sep-firmware.j416s.RELEASE.im4p
+
+Mac Studio (2025)
+ > Mac15,14_J575DAP_25F71
+   - TimeStamp: 18 Apr 2026 16:24:39 PDT
+   - KernelCache: kernelcache.release.mac15j
+   - CPU: M3 Ultra (ARMv8.6-A), ID: t6032
+   - BootLoaders
+       * iBEC.j575d.RELEASE.im4p
+       * iBoot.j575d.RELEASE.im4p
+       * iBSS.j575d.RELEASE.im4p
+       * LLB.j575d.RELEASE.im4p
+       * sep-firmware.j575d.RELEASE.im4p
+
+MacBook Pro (14-inch, Nov 2024)
+ > Mac16,1_J604AP_25F71
+   - TimeStamp: 18 Apr 2026 16:25:02 PDT
+   - KernelCache: kernelcache.release.mac16g
+   - CPU: M4 (ARMv9.2-A), ID: t8132
+   - BootLoaders
+       * iBEC.j604.RELEASE.im4p
+       * iBoot.j604.RELEASE.im4p
+       * iBSS.j604.RELEASE.im4p
+       * LLB.j604.RELEASE.im4p
+       * sep-firmware.j604.RELEASE.im4p
+
+MacBook Pro (16-inch, Nov 2024)
+ > Mac16,7_J616SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:25:58 PDT
+   - KernelCache: kernelcache.release.mac16j
+   - CPU: M4 Pro (ARMv9.2-A), ID: t6040
+   - BootLoaders
+       * iBEC.j616s.RELEASE.im4p
+       * iBoot.j616s.RELEASE.im4p
+       * iBSS.j616s.RELEASE.im4p
+       * LLB.j616s.RELEASE.im4p
+       * sep-firmware.j616s.RELEASE.im4p
+
+MacBook Air (13-inch, M4, 2025)
+ > Mac16,12_J713AP_25F71
+   - TimeStamp: 18 Apr 2026 16:26:53 PDT
+   - KernelCache: kernelcache.release.mac16g
+   - CPU: M4 (ARMv9.2-A), ID: t8132
+   - BootLoaders
+       * iBEC.j713.RELEASE.im4p
+       * iBoot.j713.RELEASE.im4p
+       * iBSS.j713.RELEASE.im4p
+       * LLB.j713.RELEASE.im4p
+       * sep-firmware.j713.RELEASE.im4p
+
+MacBook Pro (16-inch, 2021)
+ > MacBookPro18,1_J316SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:20:38 PDT
+   - KernelCache: kernelcache.release.mac13j
+   - CPU: M1 Pro (ARMv8.5-A), ID: t6000
+   - BootLoaders
+       * iBEC.j316s.RELEASE.im4p
+       * iBoot.j316s.RELEASE.im4p
+       * iBSS.j316s.RELEASE.im4p
+       * LLB.j316s.RELEASE.im4p
+       * sep-firmware.j316s.RELEASE.im4p
+
+MacBook Pro (14-inch, 2023)
+ > Mac14,5_J414CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:21:18 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Max (ARMv8.5-A), ID: t6021
+   - BootLoaders
+       * iBEC.j414c.RELEASE.im4p
+       * iBoot.j414c.RELEASE.im4p
+       * iBSS.j414c.RELEASE.im4p
+       * LLB.j414c.RELEASE.im4p
+       * sep-firmware.j414c.RELEASE.im4p
+
+MacBook Pro (14-inch, 2023)
+ > Mac14,9_J414SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:21:33 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Pro (ARMv8.5-A), ID: t6020
+   - BootLoaders
+       * iBEC.j414s.RELEASE.im4p
+       * iBoot.j414s.RELEASE.im4p
+       * iBSS.j414s.RELEASE.im4p
+       * LLB.j414s.RELEASE.im4p
+       * sep-firmware.j414s.RELEASE.im4p
+
+Mac mini (2023)
+ > Mac14,3_J473AP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:36 PDT
+   - KernelCache: kernelcache.release.mac14g
+   - CPU: M2 (ARMv8.5-A), ID: t8112
+   - BootLoaders
+       * iBEC.j473.RELEASE.im4p
+       * iBoot.j473.RELEASE.im4p
+       * iBSS.j473.RELEASE.im4p
+       * LLB.j473.RELEASE.im4p
+       * sep-firmware.j473.RELEASE.im4p
+
+MacBook Pro (16-inch, Nov 2023)
+ > Mac15,11_J516MAP_25F71
+   - TimeStamp: 18 Apr 2026 16:24:10 PDT
+   - KernelCache: kernelcache.release.mac15j
+   - CPU: M3 Max (ARMv8.6-A), ID: t6034
+   - BootLoaders
+       * iBEC.j516m.RELEASE.im4p
+       * iBoot.j516m.RELEASE.im4p
+       * iBSS.j516m.RELEASE.im4p
+       * LLB.j516m.RELEASE.im4p
+       * sep-firmware.j516m.RELEASE.im4p
+
+MacBook Pro (16-inch, Nov 2023)
+ > Mac15,7_J516SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:24:24 PDT
+   - KernelCache: kernelcache.release.mac15s
+   - CPU: M3 Pro (ARMv8.6-A), ID: t6030
+   - BootLoaders
+       * iBEC.j516s.RELEASE.im4p
+       * iBoot.j516s.RELEASE.im4p
+       * iBSS.j516s.RELEASE.im4p
+       * LLB.j516s.RELEASE.im4p
+       * sep-firmware.j516s.RELEASE.im4p
+
+Mac Studio (2025)
+ > Mac16,9_J575CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:24:27 PDT
+   - KernelCache: kernelcache.release.mac16j
+   - CPU: M4 Max (ARMv9.2-A), ID: t6041
+   - BootLoaders
+       * iBEC.j575c.RELEASE.im4p
+       * iBoot.j575c.RELEASE.im4p
+       * iBSS.j575c.RELEASE.im4p
+       * LLB.j575c.RELEASE.im4p
+       * sep-firmware.j575c.RELEASE.im4p
+
+MacBook Neo
+ > Mac17,5_J700AP_25F71
+   - TimeStamp: 18 Apr 2026 16:26:27 PDT
+   - KernelCache: kernelcache.release.mac17p
+   - CPU: A18 Pro (ARMv9.2-A), ID: t8140
+   - BootLoaders
+       * iBEC.j700.RELEASE.im4p
+       * iBoot.j700.RELEASE.im4p
+       * iBSS.j700.RELEASE.im4p
+       * LLB.j700.RELEASE.im4p
+       * sep-firmware.j700.RELEASE.im4p
+
+MacBook Pro (14-inch, 2021)
+ > MacBookPro18,4_J314CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:20:08 PDT
+   - KernelCache: kernelcache.release.mac13j
+   - CPU: M1 Max (ARMv8.5-A), ID: t6001
+   - BootLoaders
+       * iBEC.j314c.RELEASE.im4p
+       * iBoot.j314c.RELEASE.im4p
+       * iBSS.j314c.RELEASE.im4p
+       * LLB.j314c.RELEASE.im4p
+       * sep-firmware.j314c.RELEASE.im4p
+
+MacBook Pro (14-inch, 2021)
+ > MacBookPro18,3_J314SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:20:16 PDT
+   - KernelCache: kernelcache.release.mac13j
+   - CPU: M1 Pro (ARMv8.5-A), ID: t6000
+   - BootLoaders
+       * iBEC.j314s.RELEASE.im4p
+       * iBoot.j314s.RELEASE.im4p
+       * iBSS.j314s.RELEASE.im4p
+       * LLB.j314s.RELEASE.im4p
+       * sep-firmware.j314s.RELEASE.im4p
+
+MacBook Air (15-inch, M2, 2023)
+ > Mac14,15_J415AP_25F71
+   - TimeStamp: 18 Apr 2026 16:21:36 PDT
+   - KernelCache: kernelcache.release.mac14g
+   - CPU: M2 (ARMv8.5-A), ID: t8112
+   - BootLoaders
+       * iBEC.j415.RELEASE.im4p
+       * iBoot.j415.RELEASE.im4p
+       * iBSS.j415.RELEASE.im4p
+       * LLB.j415.RELEASE.im4p
+       * sep-firmware.j415.RELEASE.im4p
+
+MacBook Pro (16-inch, 2023)
+ > Mac14,6_J416CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:21:48 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Max (ARMv8.5-A), ID: t6021
+   - BootLoaders
+       * iBEC.j416c.RELEASE.im4p
+       * iBoot.j416c.RELEASE.im4p
+       * iBSS.j416c.RELEASE.im4p
+       * LLB.j416c.RELEASE.im4p
+       * sep-firmware.j416c.RELEASE.im4p
+
+iMac (24-inch, M1, 2021)
+ > iMac21,1_J456AP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:26 PDT
+   - KernelCache: kernelcache.release.mac13g
+   - CPU: M1 (ARMv8.5-A), ID: t8103
+   - BootLoaders
+       * iBEC.j456.RELEASE.im4p
+       * iBoot.j456.RELEASE.im4p
+       * iBSS.j456.RELEASE.im4p
+       * LLB.j456.RELEASE.im4p
+       * sep-firmware.j456.RELEASE.im4p
+
+iMac (24-inch, M1, 2021)
+ > iMac21,2_J457AP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:28 PDT
+   - KernelCache: kernelcache.release.mac13g
+   - CPU: M1 (ARMv8.5-A), ID: t8103
+   - BootLoaders
+       * iBEC.j457.RELEASE.im4p
+       * iBoot.j457.RELEASE.im4p
+       * iBSS.j457.RELEASE.im4p
+       * LLB.j457.RELEASE.im4p
+       * sep-firmware.j457.RELEASE.im4p
+
+Mac Studio (2023)
+ > Mac14,13_J475CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:47 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Max (ARMv8.5-A), ID: t6021
+   - BootLoaders
+       * iBEC.j475c.RELEASE.im4p
+       * iBoot.j475c.RELEASE.im4p
+       * iBSS.j475c.RELEASE.im4p
+       * LLB.j475c.RELEASE.im4p
+       * sep-firmware.j475c.RELEASE.im4p
+
+iMac (24-inch, 2024)
+ > Mac16,2_J623AP_25F71
+   - TimeStamp: 18 Apr 2026 16:26:10 PDT
+   - KernelCache: kernelcache.release.mac16g
+   - CPU: M4 (ARMv9.2-A), ID: t8132
+   - BootLoaders
+       * iBEC.j623.RELEASE.im4p
+       * iBoot.j623.RELEASE.im4p
+       * iBSS.j623.RELEASE.im4p
+       * LLB.j623.RELEASE.im4p
+       * sep-firmware.j623.RELEASE.im4p
+
+Mac mini (M1, 2020)
+ > Macmini9,1_J274AP_25F71
+   - TimeStamp: 18 Apr 2026 16:19:40 PDT
+   - KernelCache: kernelcache.release.mac13g
+   - CPU: M1 (ARMv8.5-A), ID: t8103
+   - BootLoaders
+       * iBEC.j274.RELEASE.im4p
+       * iBoot.j274.RELEASE.im4p
+       * iBSS.j274.RELEASE.im4p
+       * LLB.j274.RELEASE.im4p
+       * sep-firmware.j274.RELEASE.im4p
+
+MacBook Pro (13-inch, M1, 2020)
+ > MacBookPro17,1_J293AP_25F71
+   - TimeStamp: 18 Apr 2026 16:19:56 PDT
+   - KernelCache: kernelcache.release.mac13g
+   - CPU: M1 (ARMv8.5-A), ID: t8103
+   - BootLoaders
+       * iBEC.j293.RELEASE.im4p
+       * iBoot.j293.RELEASE.im4p
+       * iBSS.j293.RELEASE.im4p
+       * LLB.j293.RELEASE.im4p
+       * sep-firmware.j293.RELEASE.im4p
+
+MacBook Pro (16-inch, 2021)
+ > MacBookPro18,2_J316CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:20:33 PDT
+   - KernelCache: kernelcache.release.mac13j
+   - CPU: M1 Max (ARMv8.5-A), ID: t6001
+   - BootLoaders
+       * iBEC.j316c.RELEASE.im4p
+       * iBoot.j316c.RELEASE.im4p
+       * iBSS.j316c.RELEASE.im4p
+       * LLB.j316c.RELEASE.im4p
+       * sep-firmware.j316c.RELEASE.im4p
+
+Mac Studio (2023)
+ > Mac14,14_J475DAP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:55 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Ultra (ARMv8.5-A), ID: t6022
+   - BootLoaders
+       * iBEC.j475d.RELEASE.im4p
+       * iBoot.j475d.RELEASE.im4p
+       * iBSS.j475d.RELEASE.im4p
+       * LLB.j475d.RELEASE.im4p
+       * sep-firmware.j475d.RELEASE.im4p
+
+MacBook Pro (14-inch, Nov 2023)
+ > Mac15,10_J514MAP_25F71
+   - TimeStamp: 18 Apr 2026 16:23:33 PDT
+   - KernelCache: kernelcache.release.mac15j
+   - CPU: M3 Max (ARMv8.6-A), ID: t6034
+   - BootLoaders
+       * iBEC.j514m.RELEASE.im4p
+       * iBoot.j514m.RELEASE.im4p
+       * iBSS.j514m.RELEASE.im4p
+       * LLB.j514m.RELEASE.im4p
+       * sep-firmware.j514m.RELEASE.im4p
+
+MacBook Pro (16-inch, Nov 2023)
+ > Mac15,9_J516CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:23:56 PDT
+   - KernelCache: kernelcache.release.mac15j
+   - CPU: M3 Max (ARMv8.6-A), ID: t6031
+   - BootLoaders
+       * iBEC.j516c.RELEASE.im4p
+       * iBoot.j516c.RELEASE.im4p
+       * iBSS.j516c.RELEASE.im4p
+       * LLB.j516c.RELEASE.im4p
+       * sep-firmware.j516c.RELEASE.im4p
+
+iMac (24-inch, 2024)
+ > Mac16,3_J624AP_25F71
+   - TimeStamp: 18 Apr 2026 16:26:18 PDT
+   - KernelCache: kernelcache.release.mac16g
+   - CPU: M4 (ARMv9.2-A), ID: t8132
+   - BootLoaders
+       * iBEC.j624.RELEASE.im4p
+       * iBoot.j624.RELEASE.im4p
+       * iBSS.j624.RELEASE.im4p
+       * LLB.j624.RELEASE.im4p
+       * sep-firmware.j624.RELEASE.im4p
+
+Mac mini (2024)
+ > Mac16,10_J773GAP_25F71
+   - TimeStamp: 18 Apr 2026 16:28:42 PDT
+   - KernelCache: kernelcache.release.mac16g
+   - CPU: M4 (ARMv9.2-A), ID: t8132
+   - BootLoaders
+       * iBEC.j773g.RELEASE.im4p
+       * iBoot.j773g.RELEASE.im4p
+       * iBSS.j773g.RELEASE.im4p
+       * LLB.j773g.RELEASE.im4p
+       * sep-firmware.j773g.RELEASE.im4p
+
+Mac Studio
+ > Mac13,1_J375CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:20:49 PDT
+   - KernelCache: kernelcache.release.mac13j
+   - CPU: M1 Max (ARMv8.5-A), ID: t6001
+   - BootLoaders
+       * iBEC.j375c.RELEASE.im4p
+       * iBoot.j375c.RELEASE.im4p
+       * iBSS.j375c.RELEASE.im4p
+       * LLB.j375c.RELEASE.im4p
+       * sep-firmware.j375c.RELEASE.im4p
+
+MacBook Air (M2, 2022)
+ > Mac14,2_J413AP_25F71
+   - TimeStamp: 18 Apr 2026 16:21:05 PDT
+   - KernelCache: kernelcache.release.mac14g
+   - CPU: M2 (ARMv8.5-A), ID: t8112
+   - BootLoaders
+       * iBEC.j413.RELEASE.im4p
+       * iBoot.j413.RELEASE.im4p
+       * iBSS.j413.RELEASE.im4p
+       * LLB.j413.RELEASE.im4p
+       * sep-firmware.j413.RELEASE.im4p
+
+MacBook Pro (14-inch, Nov 2024)
+ > Mac16,8_J614SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:25:31 PDT
+   - KernelCache: kernelcache.release.mac16j
+   - CPU: M4 Pro (ARMv9.2-A), ID: t6040
+   - BootLoaders
+       * iBEC.j614s.RELEASE.im4p
+       * iBoot.j614s.RELEASE.im4p
+       * iBSS.j614s.RELEASE.im4p
+       * LLB.j614s.RELEASE.im4p
+       * sep-firmware.j614s.RELEASE.im4p
+
+MacBook Pro (16-inch, Nov 2024)
+ > Mac16,5_J616CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:25:52 PDT
+   - KernelCache: kernelcache.release.mac16j
+   - CPU: M4 Max (ARMv9.2-A), ID: t6041
+   - BootLoaders
+       * iBEC.j616c.RELEASE.im4p
+       * iBoot.j616c.RELEASE.im4p
+       * iBSS.j616c.RELEASE.im4p
+       * LLB.j616c.RELEASE.im4p
+       * sep-firmware.j616c.RELEASE.im4p
+
+MacBook Pro (14-inch, M5 Pro)
+ > Mac17,9_J714SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:27:11 PDT
+   - KernelCache: kernelcache.release.mac17j
+   - CPU: M5 Pro (), ID: t6050
+   - BootLoaders
+       * iBEC.j714s.RELEASE.im4p
+       * iBoot.j714s.RELEASE.im4p
+       * iBSS.j714s.RELEASE.im4p
+       * LLB.j714s.RELEASE.im4p
+       * sep-firmware.j714s.RELEASE.im4p
+
+Mac mini (2023)
+ > Mac14,12_J474SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:41 PDT
+   - KernelCache: kernelcache.release.mac14j
+   - CPU: M2 Pro (ARMv8.5-A), ID: t6020
+   - BootLoaders
+       * iBEC.j474s.RELEASE.im4p
+       * iBoot.j474s.RELEASE.im4p
+       * iBSS.j474s.RELEASE.im4p
+       * LLB.j474s.RELEASE.im4p
+       * sep-firmware.j474s.RELEASE.im4p
+
+MacBook Pro (14-inch, Nov 2023)
+ > Mac15,3_J504AP_25F71
+   - TimeStamp: 18 Apr 2026 16:23:14 PDT
+   - KernelCache: kernelcache.release.mac15g
+   - CPU: M3 (ARMv8.6-A), ID: t8122
+   - BootLoaders
+       * iBEC.j504.RELEASE.im4p
+       * iBoot.j504.RELEASE.im4p
+       * iBSS.j504.RELEASE.im4p
+       * LLB.j504.RELEASE.im4p
+       * sep-firmware.j504.RELEASE.im4p
+
+MacBook Pro (14-inch, Nov 2024)
+ > Mac16,6_J614CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:25:27 PDT
+   - KernelCache: kernelcache.release.mac16j
+   - CPU: M4 Max (ARMv9.2-A), ID: t6041
+   - BootLoaders
+       * iBEC.j614c.RELEASE.im4p
+       * iBoot.j614c.RELEASE.im4p
+       * iBSS.j614c.RELEASE.im4p
+       * LLB.j614c.RELEASE.im4p
+       * sep-firmware.j614c.RELEASE.im4p
+
+MacBook Pro (14-inch, M5)
+ > Mac17,2_J704AP_25F71
+   - TimeStamp: 18 Apr 2026 16:26:39 PDT
+   - KernelCache: kernelcache.release.mac17g
+   - CPU: M5 (ARMv9.6-A), ID: t8142
+   - BootLoaders
+       * iBEC.j704.RELEASE.im4p
+       * iBoot.j704.RELEASE.im4p
+       * iBSS.j704.RELEASE.im4p
+       * LLB.j704.RELEASE.im4p
+       * sep-firmware.j704.RELEASE.im4p
+
+MacBook Air (15-inch, M4, 2025)
+ > Mac16,13_J715AP_25F71
+   - TimeStamp: 18 Apr 2026 16:28:03 PDT
+   - KernelCache: kernelcache.release.mac16g
+   - CPU: M4 (ARMv9.2-A), ID: t8132
+   - BootLoaders
+       * iBEC.j715.RELEASE.im4p
+       * iBoot.j715.RELEASE.im4p
+       * iBSS.j715.RELEASE.im4p
+       * LLB.j715.RELEASE.im4p
+       * sep-firmware.j715.RELEASE.im4p
+
+Mac mini (2024)
+ > Mac16,11_J773SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:28:51 PDT
+   - KernelCache: kernelcache.release.mac16j
+   - CPU: M4 Pro (ARMv9.2-A), ID: t6040
+   - BootLoaders
+       * iBEC.j773s.RELEASE.im4p
+       * iBoot.j773s.RELEASE.im4p
+       * iBSS.j773s.RELEASE.im4p
+       * LLB.j773s.RELEASE.im4p
+       * sep-firmware.j773s.RELEASE.im4p
+
+Apple Virtual Machine 1
+ > VirtualMac2,1_VMA2MACOSAP_25F71
+   - TimeStamp: 18 Apr 2026 16:30:27 PDT
+   - KernelCache: kernelcache.release.vma2
+   - CPU: VCPU (ARMv8.4-A), ID: vmapple2
+   - BootLoaders
+       * iBEC.vma2.RELEASE.im4p
+       * iBoot.vma2.RELEASE.im4p
+       * iBSS.vma2.RELEASE.im4p
+       * LLB.vma2.RELEASE.im4p
+
+MacBook Pro (14-inch, Nov 2023)
+ > Mac15,8_J514CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:23:23 PDT
+   - KernelCache: kernelcache.release.mac15j
+   - CPU: M3 Max (ARMv8.6-A), ID: t6031
+   - BootLoaders
+       * iBEC.j514c.RELEASE.im4p
+       * iBoot.j514c.RELEASE.im4p
+       * iBSS.j514c.RELEASE.im4p
+       * LLB.j514c.RELEASE.im4p
+       * sep-firmware.j514c.RELEASE.im4p
+
+MacBook Pro (14-inch, Nov 2023)
+ > Mac15,6_J514SAP_25F71
+   - TimeStamp: 18 Apr 2026 16:23:53 PDT
+   - KernelCache: kernelcache.release.mac15s
+   - CPU: M3 Pro (ARMv8.6-A), ID: t6030
+   - BootLoaders
+       * iBEC.j514s.RELEASE.im4p
+       * iBoot.j514s.RELEASE.im4p
+       * iBSS.j514s.RELEASE.im4p
+       * LLB.j514s.RELEASE.im4p
+       * sep-firmware.j514s.RELEASE.im4p
+
+MacBook Air (15-inch, M3, 2024)
+ > Mac15,13_J615AP_25F71
+   - TimeStamp: 18 Apr 2026 16:25:43 PDT
+   - KernelCache: kernelcache.release.mac15g
+   - CPU: M3 (ARMv8.6-A), ID: t8122
+   - BootLoaders
+       * iBEC.j615.RELEASE.im4p
+       * iBoot.j615.RELEASE.im4p
+       * iBSS.j615.RELEASE.im4p
+       * LLB.j615.RELEASE.im4p
+       * sep-firmware.j615.RELEASE.im4p
+
+MacBook Air (13-inch, M5)
+ > Mac17,3_J813AP_25F71
+   - TimeStamp: 18 Apr 2026 16:29:06 PDT
+   - KernelCache: kernelcache.release.mac17g
+   - CPU: M5 (ARMv9.6-A), ID: t8142
+   - BootLoaders
+       * iBEC.j813.RELEASE.im4p
+       * iBoot.j813.RELEASE.im4p
+       * iBSS.j813.RELEASE.im4p
+       * LLB.j813.RELEASE.im4p
+       * sep-firmware.j813.RELEASE.im4p
+
+MacBook Air (15-inch, M5)
+ > Mac17,4_J815AP_25F71
+   - TimeStamp: 18 Apr 2026 16:29:18 PDT
+   - KernelCache: kernelcache.release.mac17g
+   - CPU: M5 (ARMv9.6-A), ID: t8142
+   - BootLoaders
+       * iBEC.j815.RELEASE.im4p
+       * iBoot.j815.RELEASE.im4p
+       * iBSS.j815.RELEASE.im4p
+       * LLB.j815.RELEASE.im4p
+       * sep-firmware.j815.RELEASE.im4p
+
+iMac (24-inch, 2023)
+ > Mac15,4_J433AP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:03 PDT
+   - KernelCache: kernelcache.release.mac15g
+   - CPU: M3 (ARMv8.6-A), ID: t8122
+   - BootLoaders
+       * iBEC.j433.RELEASE.im4p
+       * iBoot.j433.RELEASE.im4p
+       * iBSS.j433.RELEASE.im4p
+       * LLB.j433.RELEASE.im4p
+       * sep-firmware.j433.RELEASE.im4p
+
+iMac (24-inch, 2023)
+ > Mac15,5_J434AP_25F71
+   - TimeStamp: 18 Apr 2026 16:22:13 PDT
+   - KernelCache: kernelcache.release.mac15g
+   - CPU: M3 (ARMv8.6-A), ID: t8122
+   - BootLoaders
+       * iBEC.j434.RELEASE.im4p
+       * iBoot.j434.RELEASE.im4p
+       * iBSS.j434.RELEASE.im4p
+       * LLB.j434.RELEASE.im4p
+       * sep-firmware.j434.RELEASE.im4p
+
+MacBook Pro (13-inch, M2, 2022)
+ > Mac14,7_J493AP_25F71
+   - TimeStamp: 18 Apr 2026 16:23:05 PDT
+   - KernelCache: kernelcache.release.mac14g
+   - CPU: M2 (ARMv8.5-A), ID: t8112
+   - BootLoaders
+       * iBEC.j493.RELEASE.im4p
+       * iBoot.j493.RELEASE.im4p
+       * iBSS.j493.RELEASE.im4p
+       * LLB.j493.RELEASE.im4p
+       * sep-firmware.j493.RELEASE.im4p
+
+MacBook Air (13-inch, M3, 2024)
+ > Mac15,12_J613AP_25F71
+   - TimeStamp: 18 Apr 2026 16:25:09 PDT
+   - KernelCache: kernelcache.release.mac15g
+   - CPU: M3 (ARMv8.6-A), ID: t8122
+   - BootLoaders
+       * iBEC.j613.RELEASE.im4p
+       * iBoot.j613.RELEASE.im4p
+       * iBSS.j613.RELEASE.im4p
+       * LLB.j613.RELEASE.im4p
+       * sep-firmware.j613.RELEASE.im4p
+
+MacBook Pro (14-inch, M5 Max)
+ > Mac17,7_J714CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:27:01 PDT
+   - KernelCache: kernelcache.release.mac17j
+   - CPU: M5 Pro (), ID: t6050
+   - BootLoaders
+       * iBEC.j714c.RELEASE.im4p
+       * iBoot.j714c.RELEASE.im4p
+       * iBSS.j714c.RELEASE.im4p
+       * LLB.j714c.RELEASE.im4p
+       * sep-firmware.j714c.RELEASE.im4p
+
+MacBook Pro (16-inch, M5 Max)
+ > Mac17,6_J716CAP_25F71
+   - TimeStamp: 18 Apr 2026 16:28:07 PDT
+   - KernelCache: kernelcache.release.mac17j
+   - CPU: M5 Pro (), ID: t6050
+   - BootLoaders
+       * iBEC.j716c.RELEASE.im4p
+       * iBoot.j716c.RELEASE.im4p
+       * iBSS.j716c.RELEASE.im4p
+       * LLB.j716c.RELEASE.im4p
+       * sep-firmware.j716c.RELEASE.im4p
+

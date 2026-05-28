@@ -24,9 +24,14 @@ analysis/manifests/*/
 *.nam
 *.til
 
-# Reference repos (cloned separately)
+# Reference repos and downloaded tools (re-fetch locally)
 tools/m1n1-ref/
 tools/linux-ref/
+tools/ipsw
+
+# Extracted XNU kexts and kernelcaches — Apple firmware, not redistributable
+analysis/adt/kernels/
+analysis/xnu/
 
 # Build artifacts
 *.o
