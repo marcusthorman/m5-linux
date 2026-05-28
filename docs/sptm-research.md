@@ -2,12 +2,39 @@
 
 ## What is SPTM
 
-Secure Page Table Monitor. Introduced with M4 (T8132). Runs at GL2 — a
-privilege level above EL2 (hypervisor) and EL1 (kernel). Manages ARM64
-page tables from above the OS.
+Secure Page Table Monitor. Runs at GL2 — a privilege level above EL2
+(hypervisor) and EL1 (kernel). Manages ARM64 page tables from above the OS.
 
 Apple's stated purpose: prevent even a compromised kernel or hypervisor from
 modifying page table mappings, closing a class of privilege escalation.
+
+### Chip coverage — SPTM is NOT M4-exclusive (corrected)
+
+Earlier notes said "introduced with M4." That is wrong for the macOS 26.5
+(25F71) firmware. The `BuildManifest.plist` lists `Ap,SecurePageTableMonitor`
+(and `Ap,RestoreSecurePageTableMonitor`) as **signed boot components** — loaded
+and verified by iBoot at boot — for these chips:
+
+| Has SPTM boot object (25F71) | No SPTM |
+|------------------------------|---------|
+| M1 Pro/Max/Ultra (t6000-2), M2 (t8112), M2 Pro/Max/Ultra (t6020-2), M3 (t8122), M3 Pro/Max (t6030/1), M4 family (t8132/t6040/1), A18 Pro (t8140), M5 family (t8142/t6050) | **M1 base only (t8103)** |
+
+So under current macOS the SPTM blocker is *not* unique to M4 — it is boot-loaded
+on M2 and M3 too. The only listed Apple Silicon Mac chip without SPTM is the
+original M1 (t8103), which is exactly the platform Asahi's hypervisor RE was
+built on.
+
+Two caveats this firmware alone can't resolve: (1) "boot-loaded" is proven from
+the manifest, but whether SPTM *enforces* the same restrictions that break the
+m1n1 hypervisor on M2/M3 as it does on M4 is not established here — it may be
+why Asahi's M2/M3 support (built against earlier macOS) still works. (2) The
+full **Exclaves/ExclaveOS** secure world is newer: `Ap,ExclaveOS*` appears as a
+boot component only for A18 Pro, M5, and M5 Pro — not M3/M4 — though every SPTM
+build (incl. M3) contains the XNU↔TXM transition code.
+
+Practical upshot for this project: the SPTM protocol RE and the XNU-shim below
+are the **same binary/version on M2/M3/M4/M5** (see below), so the work targets
+all of them, not just M4.
 
 ## Why it blocks Linux
 
@@ -52,10 +79,15 @@ directly, not just inferred from XNU. Extract with `analysis/sptm/extract-sptm.s
 
 - **im4p payload is LZFSE-compressed, no KBAG** → decompresses to a plain
   **ARM64e `MH_EXECUTE` Mach-O** (~1.2 MB). PIE, NoUndefs, stripped (1 symbol).
-- **Source version 611.120.6 across M4 and M5** (per-chip binaries differ only
-  in chip constants). The boot protocol is therefore the same on M4 and M5 —
-  a shim validated on M4 should carry to M5. M5 Pro (t6050) is larger (1.37 MB),
-  likely multi-die handling.
+- **Source version 611.120.6 across M3, M4 and M5** (verified on t8122 M3,
+  t6030 M3 Pro, t6031 M3 Max, t8132 M4, t8142 M5, t6050 M5 Pro — all 611.120.6;
+  per-chip binaries differ only in chip constants, e.g. M3 Pro vs M4 first differ
+  at byte 145). Same `dispatch_state_machine`, `sptm_register_dispatch_table`,
+  `XNU->TXM`, UAT bootstrap strings in the M3 binary. The boot protocol is
+  therefore the same M3→M5 — a shim validated on M4 should carry to both M5
+  and M3. Addresses differ per build (e.g. dispatcher code shifts), so RE must
+  be re-anchored per binary. M5 Pro (t6050) is larger (1.37 MB), likely
+  multi-die handling.
 - Layout: `__TEXT_EXEC.__text` ≈ 381 KB of code; entry `0xfffffff0270ac388`
   (T8132). Boot structures live in `__BOOTDATA` (80 KB) and `__LATE_CONST`.
 

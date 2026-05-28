@@ -7,10 +7,13 @@ Builds on and contributes back to the Asahi Linux project stack.
 
 ## The blocking problem: SPTM
 
-Starting with M4, Apple introduced the Secure Page Table Monitor (SPTM) at
-GL2 privilege — above the OS. This breaks the Asahi hypervisor-based
-reverse-engineering methodology entirely (can no longer run macOS as a guest
-to trace MMIO registers).
+The Secure Page Table Monitor (SPTM) runs at GL2 privilege — above the OS. It
+breaks the Asahi hypervisor-based reverse-engineering methodology (can no longer
+run macOS as a guest to trace MMIO registers). M4 is where this became the
+practical blocker, but SPTM is **not** M4-exclusive: under macOS 26.5 it is a
+signed boot component for M2 and M3 as well (everything except the original M1
+t8103) — see `docs/sptm-research.md`. The same SPTM build (ver 611.120.6) is
+used M3→M5, so this work applies beyond M4.
 
 The only known path forward is an **XNU shim**: a minimal stub that satisfies
 SPTM's boot protocol without running real macOS, then transfers control to
