@@ -326,18 +326,88 @@ So the contract decomposes into two layers, not one:
   the open question that decides whether a Linux port needs to route every PT
   update through `sptm_uat_*` or can run in a passthrough/relaxed mode.
 
-### Next decisive RE targets
+### Bootstrap stages, enforcement, and the `(0x0:0xf)` route
 
-1. **`(0x0:0xf)` handler internals** — what RO region / boot-args fields it
-   reads, what it writes to `handoff_region` (`micro_magic`/`powered_off`),
-   what caller_domain it assigns. This is the un-skippable step.
-2. **`uat_bootstrap_parse_dt`** — what device-tree properties SPTM reads at
-   bootstrap (boot policy, region declarations). The shim must present these
-   in `/chosen` for SPTM to accept it.
-3. **Passthrough / non-enforced mode** — search for an "audit-only" / "trace"
-   / dev mode in SPTM strings. If one exists for an early-boot domain, the
-   shim path is dramatically shorter; if not, Linux PT updates need SPTM
-   calls. Either answer crystallizes the rest of the work.
+SPTM bootstrap is a **multi-phase, monotonic** state machine driven by iBoot
+before m1n1 ever runs:
+
+```
+   sptm_bootstrap_early  ->  sptm_bootstrap_tlbi  ->  sptm_bootstrap_late
+                                                            |
+                                                            v
+                                                  sptm_bootstrap_finalize
+```
+
+A **global stage register at `0xfffffff027104000`** tracks progress as a bitmap;
+bits are atomically ORed via `ldsetl` and **regression panics**
+(`0xfffffff0270bc460`). Stages decoded from strings + xref:
+
+| string                            | bit       | meaning |
+|-----------------------------------|-----------|---------|
+| `bootstrap_stage_announce`        | (early)   | initial announce phase |
+| `bootstrap_stage_enforce_before`  | `0x2000`  | pre-enforcement bootstrap window |
+| `bootstrap_stage_enforce_after`   | `0x800`   | full enforcement active |
+
+There is also a state-machine state literally called `STATE_SPTM_BOOTSTRAP`.
+
+The XNU↔SPTM **`(0x0:0xf)` boot handoff** routes as:
+
+```
+EL1: mov x16, #0xf; genter
+  -> gxf_entry_el1 dispatcher (0xfffffff0270a454c)
+  -> type-0 path (esr_gl1 & 0x1f == 0): raw x16 forwarded
+  -> 0xfffffff0270ec944 (raw-x16 dispatcher)
+     idx != 0x1b/0x1c/0x1e -> w8 = 2 (internal class)
+  -> tail-call dispatch_state_machine(class=2, evt=0xf) at 0xfffffff0270ec010
+  -> SPTM-internal handler from the static table at 0xfffffff02701a770
+```
+
+So `(0x0:0xf)` lands in a **built-in** SPTM handler — the caller does **not**
+need to pre-register anything to make this call work. Semantically the call is
+the event that drives **`enforce_before -> enforce_after`** for this CPU: "OS
+is ready, start enforcing."
+
+### Is there a permissive / passthrough mode? Answer: NO permanent one.
+
+Searched the binary exhaustively for `passthrough`/`audit`/`relaxed`/`permissive`
+/`bypass`/`enforce` strings. Findings:
+
+- **No global passthrough/audit-only mode.** The pre-enforcement window
+  (`enforce_before`) is real but transient — Apple's iBoot drives SPTM through
+  it before handing to the OS, and the stage register is monotonic.
+- Configuration knobs exist for **specific subsystems**, not global enforcement:
+  - `mapping-enforcement-mode` (a `/chosen`/`/defaults` DT property read in
+    `sptm_bootstrap_late`)
+  - `uat-enforce-gpu-carveout`, `uat-mapping-limit`
+  - DART knobs: `allow-mixed-bypass-mode`, `apf-bypass`, `sptm_init_register_allow_io_range`
+- The crypto/verification surface in the boot path is page-table integrity
+  (UAT) + **hibernation HMAC** — not boot-object attestation.
+
+### Implication for the shim (refined)
+
+A 100% reliable shim per pinned firmware is still achievable, but the
+**shape of the Linux port is bigger** than a single boot stub:
+
+- The shim MUST eventually call `(0x0:0xf)` (or whatever event triggers the
+  `enforce_after` transition) — it cannot indefinitely stall in
+  `enforce_before` (iBoot has already left SPTM there expecting the OS to
+  finish bootstrap promptly).
+- Once `enforce_after` is set, **SPTM enforces UAT on the running OS**. That
+  means Linux either:
+  1. **Ports its PT-update path to call `sptm_uat_*`** (substantial kernel
+     work, but tractable — XNU does this);
+  2. **Runs as a `caller_domain` whose permissions allow self-managed PT**
+     within a declared RO range (worth investigating: the per-domain
+     `table_permissions` model in `sptm_register_dispatch_table` hints this
+     is possible — needs RE of how XNU's permissions differ from a "guest");
+  3. **Stays inside `enforce_before` somehow** — unlikely to be sanctioned,
+     but worth checking whether a debug/early-handoff path skips the
+     transition.
+
+The next decisive RE target is now option (2): what `permissions` values exist,
+and is there a permission set that grants a caller_domain "manage your own PT
+range" without per-page SPTM calls? That answer determines whether Linux needs
+an MMU port or just a richer shim.
 
 ---
 
@@ -604,9 +674,11 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | SPTM GENTER dispatcher located                  | ✓ done  | runtime `gxf_entry_el1 = 0xfffffff0270a454c` (T8132) |
 | SPTM dispatch model                             | ✓ done  | **domain state machine** (`dispatch_state_machine` @ `0xec010`); registered tables w/ per-domain permissions; XNU↔SPTM↔TXM |
 | `sptm_register_dispatch_table` semantics        | ✓ done  | `(table_id<16, entry_addr, perms)`; per-CPU caller_domain∈0..4; 2D slot array; RO-range bounds check |
-| `(0x0:0xf)` → which state transition / domain setup | ✗ open  | reads RO region + assigns caller_domain — the un-skippable boot step |
-| `uat_bootstrap_parse_dt` DT contract            | ✗ open  | what `/chosen` properties SPTM expects from the boot caller |
-| SPTM passthrough/audit-only mode for non-XNU domain | ✗ open  | decides whether Linux PT updates need sptm_uat_* calls |
+| `(0x0:0xf)` route                                | ✓ done  | type-0 raw-x16 dispatcher → `dispatch_state_machine(class=2, evt=0xf)`; built-in handler |
+| SPTM bootstrap stages                            | ✓ done  | early/tlbi/late/finalize; stage reg @ `0xfffffff027104000` (bits announce/`0x2000` before/`0x800` after); monotonic |
+| Global passthrough/audit-only mode               | ✓ done  | **does NOT exist**; only per-subsystem knobs (`mapping-enforcement-mode` etc.) |
+| `uat_bootstrap_parse_dt` /chosen properties      | ◑ part  | known names: `mapping-enforcement-mode`, `pmap-max-asids`, `uat-enforce-gpu-carveout`, `uat-mapping-limit`; values TBD |
+| Per-domain `permissions` semantics — does any caller_domain get "self-managed PT"? | ✗ open | THE question that decides whether Linux needs an MMU port or just a shim |
 | m1n1 shim entry mechanism                       | ◑ draft | patch 0004 — genter stub + (0x0:0xf), unverified |
 | What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE (drives shim pre-state) |
 | Minimum call sequence for shim                  | ✗ open  | Likely just `(0x0:0xf)` but unverified   |
