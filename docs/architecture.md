@@ -64,9 +64,9 @@ SPTM interface mapped (static RE of XNU + SPTM binary)
 | Layer | Component | Our work |
 |-------|-----------|----------|
 | Boot stage 1 | m1n1 (signed by Apple) | No changes possible |
-| Boot stage 2 | m1n1 fork | XNU shim for SPTM; M5 chip IDs; M5 DTS |
+| Boot stage 2 | m1n1 fork | XNU shim for SPTM (✅ patches 0001-0004 build clean: m1n1.macho 884 KB); M5 chip IDs; M5 DTS |
 | UEFI | U-Boot fork | M4/M5 board support |
-| Kernel | linux-asahi fork | M4/M5 DTS; driver work |
+| Kernel | linux-asahi fork | SPTM MMU wrapper layer (✅ linux-sptm/ scaffold builds clean); M4/M5 DTS; driver work |
 | GPU (user) | Mesa (upstream) | Track Asahi GPU work for M4/M5 |
 | Base distro | ALARM aarch64 | Packaging + installer |
 

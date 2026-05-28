@@ -6,10 +6,11 @@ Linux on Apple Silicon Macs that ship the **Secure Page Table Monitor (SPTM)**
 on, and intended to feed back into, the [Asahi Linux](https://asahilinux.org/)
 project.
 
-> **Status:** the static reverse-engineering picture is closed end-to-end.
-> No hardware bring-up yet. This is a planning + RE-notes repo, not a
-> shipping bootloader. All findings are from publicly-available IPSW
-> firmware; no Apple binaries are redistributed here.
+> **Status:** the static reverse-engineering picture is closed end-to-end,
+> and both code artifacts (m1n1 SPTM-shim patches and the Linux
+> `arch/arm64/mm/sptm.c` scaffold) **build clean against current upstream
+> trees**. No hardware bring-up yet. All findings are from publicly-
+> available IPSW firmware; no Apple binaries are redistributed here.
 
 ---
 
@@ -85,8 +86,22 @@ analysis/
   iboot/                     — extraction script. Payloads gitignored.
   manifests/                 — BuildManifest diff tooling. Manifests gitignored.
 
+linux-sptm/                  — source-of-truth for arch/arm64/mm/sptm.c +
+                               arch/arm64/include/asm/sptm.h + README. Applied
+                               into a kernel tree by scripts/apply-linux-sptm.py.
+
+scripts/
+  apply-m1n1-patches.py      — idempotent installer; clone Asahi m1n1, apply
+                               our patches 0001-0004 onto src/.
+  apply-linux-sptm.py        — idempotent installer; drop linux-sptm/ files
+                               into a kernel tree, wire Kconfig + Makefile.
+
 ipsw/                        — IPSW download location (gitignored). Get the
                                UniversalMac_*.ipsw yourself from Apple.
+
+build/                       — gitignored. Local clones of upstream m1n1 +
+                               linux-asahi for compile-checking. Rebuild from
+                               scratch via the apply scripts above.
 ```
 
 ## What's *not* in this repo
@@ -94,11 +109,16 @@ ipsw/                        — IPSW download location (gitignored). Get the
 - **No Apple firmware binaries.** SPTM, iBoot, TXM, and kernelcache payloads
   are Apple's, not redistributable. The extraction scripts (`analysis/*/extract-*.sh`)
   re-derive everything from a locally-downloaded IPSW.
-- **No working shim.** Patch `0004` is the OS-side `genter` stub — runtime-correct
-  per static analysis, but unverified on hardware and contingent on m1n1 being
-  packaged as an SPTM-aware Boot Kernel Collection (separate tooling work).
-- **No Linux MMU port.** The port to `sptm_uat_*` is scoped (~1500–3000 LoC
-  in `arch/arm64/mm/`) in `docs/linux-mmu-port-scope.md`, but not started.
+- **No working shim.** Patches `0001–0004` apply cleanly and `m1n1.macho`
+  builds, but: runtime-correctness is per static analysis, unverified on
+  hardware, and contingent on m1n1 being packaged as an SPTM-aware Boot
+  Kernel Collection (separate tooling work, not done).
+- **No working Linux MMU port.** `linux-sptm/arch/arm64/mm/sptm.c` is a
+  compile-clean scaffold; the GENTER stub (`sptm_call`) and boot-handoff
+  (`sptm_boot_handoff`) are structurally complete, but most wrapper bodies
+  are still TODO (see per-function comments). The port is scoped at
+  ~1500–3000 LoC in `docs/linux-mmu-port-scope.md`; the scaffold accounts
+  for ~150.
 
 ## Reproducing the analysis
 

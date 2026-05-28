@@ -6,9 +6,43 @@ through `sptm_uat_*` calls**. This doc scopes that port: which SPTM entry
 points exist, which Linux operations they replace, where the changes land in
 `arch/arm64/`, and a realistic work envelope.
 
-The port is gated by a new `CONFIG_ARM64_APPLE_SPTM` (or similar). When off,
-the kernel builds identically to today and runs on pre-SPTM hardware
-(M1/M2/M3 ≤15.x) unchanged. When on, every PT-write site is wrapped.
+The port is gated by **`CONFIG_ARM64_APPLE_SPTM`**. When off, the kernel
+builds identically to today and runs on pre-SPTM hardware (M1/M2/M3 ≤15.x)
+unchanged. When on, every PT-write site is wrapped.
+
+## Current scaffold status — compile-only, pre-hardware
+
+Scaffold lives in **`linux-sptm/`** in this repo:
+
+- `linux-sptm/arch/arm64/include/asm/sptm.h` — API surface: packed call-
+  number macros for all labeled subsys-0 ops + all of subsys 0xb,
+  `sptm_frame_type` and `sptm_exec_mode` enums (names confirmed from SPTM
+  binary; values TODO), wrapper-function declarations
+- `linux-sptm/arch/arm64/mm/sptm.c` — wrapper layer: raw `sptm_call()`
+  GENTER stub (inline-asm, verified disassembly: `mov x16, x0; ...; .word
+  0x00201420; ret`), `sptm_boot_handoff()` issuing `(0x0:0xf)`, plus
+  HIGH-confidence wrappers (retype, set_pte, switch_root, register_cpu,
+  uat_unmap_table)
+- `scripts/apply-linux-sptm.py` — idempotent installer into a kernel tree;
+  adds `CONFIG_ARM64_APPLE_SPTM` and the Makefile obj-y line
+
+**Verified to build** against linux-asahi HEAD (Linux 7.0, asahi-wip):
+
+```
+cd build/linux-asahi
+LLVM=1 ARCH=arm64 make defconfig
+echo CONFIG_ARM64_APPLE_SPTM=y >> .config
+LLVM=1 ARCH=arm64 make olddefconfig
+LLVM=1 ARCH=arm64 make arch/arm64/mm/sptm.o   # ✅ clean
+```
+
+The matching m1n1 stub also builds (see `m1n1-patches/0004-*.patch` and
+`scripts/apply-m1n1-patches.py`): `build/m1n1/build/m1n1.macho` (884 KB)
+links cleanly with `sptm_call` and `sptm_boot_handoff` as exported symbols
+in the ELF.
+
+Neither artifact has been tested on hardware. Most of the wrapper bodies
+in `sptm.c` are still TODO — see the per-function comments in source.
 
 ## SPTM API surface (extracted from `sptm.t8132.release.payload`, 26.5)
 
