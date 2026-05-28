@@ -172,15 +172,16 @@ struct sptm_uat_state *sptm_uat_state_for(struct mm_struct *mm)
  *      fields (mode @ +0x00, paddr @ +0x08, ASID slot @ +0x18 = 0xffff).
  *   4. Stash the handle in the side-table keyed by mm.
  *
- * TODO(impl): step 3 — the exact (subsys, idx) for `sptm_uat_init_state`
- * is not yet pinned. Both the SPTM-side handler body (at SPTM VMA
- * 0xfffffff0270ba008) and the XNU-side stub are dispatched **indirectly**
- * (PAC-signed blraa through a function-pointer table in __DATA_CONST),
- * so neither static BL-search nor cstring-xref recovers the idx. The
- * candidate is one of {0x16..0x1d, 0x22..0x26, 0x29, 0x2a, 0x2d, 0x2f..0x31}
- * — the subsys-0 stubs with zero direct callers in the fileset-wide scan.
- * See analysis/sptm/sptm-stub-callers.md. Pin by chained-fixup decode
- * of the XNU vtable or by hardware experiment.
+ * TODO(impl): step 3 — issuing an explicit `sptm_uat_init_state` call
+ * may NOT be required at all. A full chained-fixup decode of the M4
+ * kernelcache (1,002,606 slots — see scripts/decode-kc-fixups.py and
+ * analysis/sptm/sptm-stub-callers.md) found zero references to the
+ * SPTM-side init/destroy handlers (at SPTM VMA 0xfffffff0270ba008 and
+ * 0xfffffff0270b9c18). XNU does not invoke them — neither directly nor
+ * via any vtable in the boot kernelcache. SPTM likely creates state
+ * objects lazily on first per-mm UAT operation. Confirm on hardware:
+ * if the first UAT call after allocating the backing page succeeds
+ * without prior init, we can drop this step entirely.
  *
  * TODO(impl): step 2 — the numeric value of SPTM_FRAME_XNU_UAT_STATE
  * (the right frame type to retype TO) is not yet pinned. The enum name

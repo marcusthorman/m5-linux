@@ -68,24 +68,56 @@ are at `0xfffffe000c067cc8..0xfffffe000c067d18` in the fileset, mixed
 into the cputrace-stubs region. The other indirectly-dispatched idxs
 sit in the main block but have no static caller.
 
-## Chained-fixup decode attempt (negative)
+## Chained-fixup decode (round 2 — done properly)
 
-A fixup-slot scan over `__DATA_CONST` / `__DATA` / `__DATA_SPTM` in the
-fileset, trying multiple candidate encodings for the indirect-dispatch
-stub VMAs (raw VMA, 36/40/51-bit cache-relative runtime offset, low-32
-VMA), yielded **zero** matching slots. The kernelcache uses a fixup
-format that doesn't store these stub pointers in any of the conventional
-arm64e shapes — likely the kernel-cache loader's own per-segment chain
-format, distinct from `DYLD_CHAINED_PTR_ARM64E`. Decoding it properly
-requires either (a) following the per-segment chain headers in
-`__chain_starts` (the SPTM binary has 7 seg-info entries with file
-offsets that don't fit the standard `dyld_chained_starts_in_image`
-layout), or (b) reading XNU's kernelcache loader sources. Neither was
-done here.
+A real decoder for `DYLD_CHAINED_PTR_ARM64E_KERNEL` (pointer format 8,
+which is what Apple Silicon kernelcaches use) is now in
+`scripts/decode-kc-fixups.py`. It walks every chain in every
+fixup-bearing segment and emits one CSV row per resolved slot.
 
-**Net:** pinning init/destroy state idx without hardware is blocked on
-either a real chained-fixup decoder for the kernelcache, or first-boot
-observation on Apple silicon.
+For the 25F71 M4 kernelcache (`Mac16,1_2_3_10_12_13`), the decoder
+walked **1,002,606 slots** across `__DATA_CONST` / `__DATA` /
+`__DATA_SPTM`. Filtered to the 50 subsys-0 SPTM stubs:
+
+    # decoded 1,002,606 slots; emitted 0
+
+**Zero** vtable references to any subsys-0 stub. Not even
+`_sptm_retype` (28 BL callers) is vtable-held — it's BL-only.
+
+Filtered to the broader stub region `0xfffffe000c066000..0xfffffe000c068000`:
+13 slots, **all contiguous** at `0xfffffe000819ae98..0xfffffe000819aef8`
+in `__DATA_CONST`. Targets are the 13 named cputrace stubs
+(`_sptm_cputrace_*`). So one cputrace_ops vtable exists, but it does
+not include the 5 unnamed stubs in the adjacent slot block
+(`0xc067cc8..0xc067d18`) that sit right next to the cputrace block.
+
+**Conclusion (revised — strong evidence now):**
+
+The subsys-0 SPTM stubs `sptm_uat_init_state` /
+`sptm_uat_destroy_state` are NOT reachable from this kernelcache by any
+means — neither direct BL (zero callers fileset-wide) nor indirect
+dispatch (zero vtable references). The SPTM-side handler bodies exist
+(at `0xfffffff0270ba008` and `0xfffffff0270b9c18`), but XNU on M4 does
+not invoke them. Plausible interpretations, ordered by likelihood:
+
+  1. **Dead code in this kernelcache.** Apple compiles all 50 subsys-0
+     stubs for ABI completeness; only ~30 are actually used on this
+     SoC + macOS combo. The init/destroy lifecycle may be handled
+     entirely SPTM-side (state objects created lazily on first use,
+     destroyed when the owning mm/pmap is torn down via a different
+     call), so XNU doesn't need to invoke them explicitly.
+  2. **Used by a kext that's loaded later** from
+     `/System/Library/Extensions` rather than baked into the boot
+     kernelcache (e.g. an external UAT IOKit driver). Not statically
+     recoverable from the IPSW.
+  3. **Reserved for future-SoC use** (M3 retro-fit, M5/M6 features).
+
+**Implication for Linux port:** the lifecycle TODO in
+`linux-sptm/arch/arm64/mm/sptm.c::sptm_uat_init_state` should be
+revised — Linux may not need to explicitly issue any
+`sptm_uat_init_state` call. The first per-mm UAT operation may simply
+work without prior init, with SPTM creating the state lazily. This
+will only be confirmable on hardware.
 
 ## Method details
 
