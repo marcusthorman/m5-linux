@@ -302,6 +302,22 @@ This is **not blocking** for starting the Linux port. You can begin with the
 typing) and add `sptm_uat_*` wrappers as each is identified during
 implementation. The CSV is the index.
 
+### Subsys 0 labels — confidence caveat
+
+**Important methodology caveat noticed during overnight verification:** the
+"caller function names" recovered for each subsys-0 idx were obtained by
+finding cstring xrefs near each GENTER site and assuming the closest XNU
+`__func__` string identifies the containing function. That heuristic is
+**weaker than it looked** — the XNU pmap stubs sit near the SPTM stub
+array in `__TEXT_EXEC`, so adjacent function-name strings often appear
+near a stub without that function actually calling the op.
+
+The high-confidence rows that survived sanity checks (sole-caller match,
+direct symbol-name match like `uat_get_root_table_paddr ↔ (0,0x1e)`, or
+boot-only callers like `arm_init`) remain trustworthy. The medium and
+low rows should be **treated as hints only** — confirm against XNU's
+caller-side context in `pmap_arm.c` before implementing.
+
 ### Subsys 0 labels (recovered from XNU caller-function names)
 
 For the 50-entry subsys 0 (the bulk of the MMU API), scanned each stub for
