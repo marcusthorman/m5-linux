@@ -450,6 +450,64 @@ Retype handlers are XNU-specific too: `xnu_exec_retype_out`,
 call" shortcut. SPTM's purpose is to *be* the gate; same-domain operations
 still go through `sptm_uat_*`.
 
+### Where the bootstrap stages actually get set (the sibling-calls answer)
+
+The natural follow-on question: are there SPTM calls the shim must make *before*
+`(0x0:0xf)` — siblings of the boot handoff — to drive the bootstrap? Static
+analysis of `sptm_bootstrap_*` confirms **no**: iBoot drives the entire
+bootstrap, including the `enforce_after` flip, *before* the OS runs.
+
+The atomic stage-bit setters (`mov w8, #imm; ldsetl x8, x8, [Xreg]` patterns):
+
+| addr (T8132 26.5) | bit set | meaning |
+|-------------------|---------|---------|
+| `0xfffffff0270bc404` | `0x2000`  | `enforce_before` |
+| `0xfffffff0270bc63c` | `0x20000` | (intermediate bootstrap bit) |
+| `0xfffffff0270e2044` | `0x80000` | (early bootstrap bit) |
+| `0xfffffff0270e2e54` | `0x200000`| (mid bootstrap bit) |
+| **`0xfffffff0270e4f68`** | **`0x800`** | **`enforce_after`** — set inside `sptm_bootstrap_late` (assertion xref at `0xe5100`) |
+
+`enforce_after` setter at `0xe4f68` is gated by a helper return == 1, then by
+`w8 == 4` plus a count `< 0x10000` — all evaluated inside `sptm_bootstrap_late`,
+which iBoot invokes before transferring control to the OS. So when XNU (or the
+shim) first runs, `enforce_after` is already set, every stage bit on the
+"before" side is set, and SPTM is in full enforcement.
+
+The XNU boot path makes exactly one SPTM call — the `(0x0:0xf)` genter — and
+the runtime stub array shows **idx `0xf` has zero non-boot callers**. So
+`(0x0:0xf)` is a one-shot handoff event under already-active enforcement, not
+the enforce-flip trigger. Args: XNU sets only `x16=0xf` at the genter; `x0–x7`
+are not loaded with anything meaningful (XNU *restores* `x0=x26, x1=x27`
+*after* the call), so the call is parameterless from the OS side.
+
+**Implication for the shim:** there are **no SPTM sibling calls the OS-side
+shim must make**. iBoot does all SPTM-side setup. The shim's complete OS-side
+responsibility is:
+
+1. Be at the right EL (the XNU pattern is EL1; m1n1 may be at EL2 depending
+   on its existing flow) with MMU **on** when `(0x0:0xf)` fires.
+2. Have `VBAR_EL1` (or `VBAR_EL2`, matching its EL) installed beforehand —
+   XNU sets `vbar_el1` then immediately issues the genter.
+3. Issue `mov x16, #0xf; genter`.
+4. Proceed.
+
+What lives in iBoot's lap (not the shim's): registering the OS image's RO
+range with SPTM. iBoot writes this into the device tree (e.g.
+`xnu_ro_pagetables_begin/end` symbols match `/chosen` properties SPTM reads in
+`uat_bootstrap_parse_dt`). For a permissive-policy boot of m1n1, **whether
+iBoot prepares the DT the same way it does for XNU is the remaining variable**
+— and it can't be answered from SPTM's binary alone (it lives in iBoot's
+behavior). Two ways to settle it:
+
+- **RE iBoot** — separate large binary, but doable.
+- **Hardware test** — boot m1n1 with patch 0004's stub on an M4 and observe
+  whether `(0x0:0xf)` returns cleanly or SPTM panics.
+
+If iBoot does prepare the DT consistently under permissive policy (the most
+likely outcome, since iBoot loads m1n1 as if it were the kernel), then
+**patch 0004's stub is essentially complete** for the *boot-handoff* layer —
+the substantial remaining work is the Linux MMU port to `sptm_uat_*`.
+
 ### Net result: Linux must masquerade as XNU
 
 The XNU-shim path is now fully scoped. Linux on M4+/M3-on-26 needs:
@@ -738,6 +796,9 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | `sptm_register_dispatch_table` semantics        | ✓ done  | `(table_id<16, entry_addr, perms)`; per-CPU caller_domain∈0..4; 2D slot array; RO-range bounds check |
 | `(0x0:0xf)` route                                | ✓ done  | type-0 raw-x16 dispatcher → `dispatch_state_machine(class=2, evt=0xf)`; built-in handler |
 | SPTM bootstrap stages                            | ✓ done  | early/tlbi/late/finalize; stage reg @ `0xfffffff027104000` (bits announce/`0x2000` before/`0x800` after); monotonic |
+| Who sets `enforce_after` (the gate for the shim) | ✓ done  | **iBoot, inside `sptm_bootstrap_late` at `0xe4f68`** — before the OS ever runs |
+| OS-side SPTM sibling calls before `(0x0:0xf)`    | ✓ done  | **none**: XNU `__TEXT_BOOT_EXEC` has only one SPTM call; idx `0xf` stub has zero non-boot callers |
+| iBoot's permissive-policy DT prep for m1n1       | ✗ open  | (not answerable from SPTM binary; either RE iBoot or hardware-test) |
 | Global passthrough/audit-only mode               | ✓ done  | **does NOT exist**; only per-subsystem knobs (`mapping-enforcement-mode` etc.) |
 | `uat_bootstrap_parse_dt` /chosen properties      | ◑ part  | known names: `mapping-enforcement-mode`, `pmap-max-asids`, `uat-enforce-gpu-carveout`, `uat-mapping-limit`; values TBD |
 | Per-domain `permissions` semantics — does any caller_domain get "self-managed PT"? | ✓ done | **NO.** Only 3 supervisor exec modes (SPTM/TXM/XNU); frame types entirely XNU_*/SPTM_*/TXM_*; ownership enforced inside SPTM API. Linux must masquerade as XNU and port MMU to `sptm_uat_*`. |
