@@ -253,13 +253,91 @@ permissions SPTM will accept) and drive the state machine from its bootstrap
 state into the running state. `(0x0:0xf)` is most likely the *event* that
 performs that registration / transition.
 
-**Next targets, in order:**
-1. `sptm_register_dispatch_table` — find it (string xref at `0xfffffff027012d32`
-   region), learn the table_id space, entry format, and permission model.
-2. The state/event table behind `dispatch_state_machine` — enumerate states,
-   events, and which transition `(0x0:0xf)` drives.
-3. Correlate the registered XNU table + `handoff_region`
-   (`micro_magic`/`powered_off`) with XNU's zeroed `__DATA_SPTM`.
+### `sptm_register_dispatch_table` — recovered contract
+
+Function entry at `0xfffffff0270ebbb0` (T8132 26.5). Prologue: `pacibsp; sub sp,#0xb0`;
+saves x19–x26, sets `x19=arg1`, `x20=arg2`. Body validated against assertion
+labels (`table_id`, `entry->dispatch_entry_point`, `permissions`,
+`sanitize_integer(dispatch_entry_addr_U.UNSAFE_VALUE)`, `Found illegal dispatch
+entry point. caller_domain: %d ...`).
+
+```c
+// Reconstructed signature:
+int sptm_register_dispatch_table(
+    uint8_t   table_id,            // x0 — in [0..15]; checked by validate_sptm_dispatch_table_id
+    void     *dispatch_entry_addr, // x1 — PAC-signed entry point (xpaci'd before bounds check)
+    uint64_t  permissions          // x2 — packed per-domain `table_permissions`
+);
+// MUST be called from GL2 (currentg != 0). caller_domain is read implicitly
+// from `[tpidr_gl2 + 0xa30]` (the same field the GENTER dispatcher uses); valid
+// values 0..4 (5+ panics).
+```
+
+Internal state — a clean 2D array `[caller_domain][table_id]`, 16 tables per
+domain × 24-byte slots:
+
+```
+slot_addr = base[caller_domain<3 ? *dynamic_ptr : static_array]
+          + caller_domain * 0x180   //  6 caller_domains × 16 tables × 24 B = 0x900
+          + table_id      * 0x18    // 24 B per slot
+slot_addr[0]    : existing table pointer — MUST be NULL on first register
+                                          (non-NULL ⇒ "Already registered" panic)
+slot_addr[0x08]: {dispatch_entry_addr, permissions} pair gets written here
+```
+
+The two backing arrays live in SPTM `__DATA` around `0xfffffff027099000` (a
+dynamic pointer at +0xbd8 for domains 0–2; a static array at +0x458 for
+domains 3–4). 16 tables × 5 domains = 80 registrations total system-wide.
+
+**Entry-point bounds check:** `dispatch_entry_addr` must lie in
+`[ caller_domain_RO_base, caller_domain_RO_base + count * 0x4000 )` — the
+per-domain RO/text region SPTM tracks (16 KB page granularity), read from a
+per-domain state struct (`[x26+0x18]` base, `[x26+0x20]` page count). If outside
+the range → `"Found illegal dispatch entry point. caller_domain: %d, entry_point:
+%#llx, dispatch_target: %#llx"` and panic.
+
+A sibling `register_sptm_iommu_dispatch_table` (entry near `0xec720`) does the
+same shape for the IOMMU dispatch table.
+
+### What this means for the shim
+
+The shim/Linux is treated as a *caller_domain* in SPTM's eyes — the same model
+as XNU. To call `sptm_register_dispatch_table` at all you need:
+
+1. A **caller_domain assignment** (from per-cpu GL2 state at `[tpidr_gl2+0xa30]`).
+2. A **registered RO range** so SPTM has bounds for the entry-point check.
+3. To be **inside GL2** (`currentg != 0`) at call time.
+
+(1) and (2) are properties SPTM sets up at boot, *not* by this function. They
+must be established by the **`(0x0:0xf)` boot handoff** (or a sibling boot call)
+— that's the call that tells SPTM "here is my RO region; assign me a domain."
+Until that runs, register_dispatch_table can't even bind to a sensible slot.
+
+So the contract decomposes into two layers, not one:
+
+- **Layer A — boot handoff (`(0x0:0xf)` + possibly siblings):** establish the
+  caller as a domain, declare its RO range, get a caller_domain id assigned to
+  this CPU's GL2 state. This is the **un-skippable** part — without it nothing
+  else works. **Still open.**
+- **Layer B — `sptm_register_dispatch_table`:** install entry-point tables for
+  the calls Linux will make. Contract now known (above). Likely **optional**
+  for Linux *if* Linux doesn't make further SPTM calls — but that depends on
+  whether SPTM enforces UAT on all page-table updates of the caller, which is
+  the open question that decides whether a Linux port needs to route every PT
+  update through `sptm_uat_*` or can run in a passthrough/relaxed mode.
+
+### Next decisive RE targets
+
+1. **`(0x0:0xf)` handler internals** — what RO region / boot-args fields it
+   reads, what it writes to `handoff_region` (`micro_magic`/`powered_off`),
+   what caller_domain it assigns. This is the un-skippable step.
+2. **`uat_bootstrap_parse_dt`** — what device-tree properties SPTM reads at
+   bootstrap (boot policy, region declarations). The shim must present these
+   in `/chosen` for SPTM to accept it.
+3. **Passthrough / non-enforced mode** — search for an "audit-only" / "trace"
+   / dev mode in SPTM strings. If one exists for an early-boot domain, the
+   shim path is dramatically shorter; if not, Linux PT updates need SPTM
+   calls. Either answer crystallizes the rest of the work.
 
 ---
 
@@ -525,8 +603,10 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | SPTM binary accessibility                       | ✓ done  | LZFSE, **unencrypted** ARM64e Mach-O; ver 611.120.6 M4=M5 |
 | SPTM GENTER dispatcher located                  | ✓ done  | runtime `gxf_entry_el1 = 0xfffffff0270a454c` (T8132) |
 | SPTM dispatch model                             | ✓ done  | **domain state machine** (`dispatch_state_machine` @ `0xec010`); registered tables w/ per-domain permissions; XNU↔SPTM↔TXM |
-| `sptm_register_dispatch_table` semantics        | ✗ open  | table_id space, entry format, permission model |
-| `(0x0:0xf)` → which state transition            | ✗ open  | enumerate states/events behind the state machine |
+| `sptm_register_dispatch_table` semantics        | ✓ done  | `(table_id<16, entry_addr, perms)`; per-CPU caller_domain∈0..4; 2D slot array; RO-range bounds check |
+| `(0x0:0xf)` → which state transition / domain setup | ✗ open  | reads RO region + assigns caller_domain — the un-skippable boot step |
+| `uat_bootstrap_parse_dt` DT contract            | ✗ open  | what `/chosen` properties SPTM expects from the boot caller |
+| SPTM passthrough/audit-only mode for non-XNU domain | ✗ open  | decides whether Linux PT updates need sptm_uat_* calls |
 | m1n1 shim entry mechanism                       | ◑ draft | patch 0004 — genter stub + (0x0:0xf), unverified |
 | What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE (drives shim pre-state) |
 | Minimum call sequence for shim                  | ✗ open  | Likely just `(0x0:0xf)` but unverified   |
