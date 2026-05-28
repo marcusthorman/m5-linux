@@ -182,10 +182,88 @@ Not a small patch, not a multi-year rewrite. The work is parallelizable
 - Drivers are unchanged (DART driver already wraps IOMMU calls; SPTM-DART
   changes are inside `drivers/iommu/apple-dart.c` only).
 
-## Next concrete RE step (if continuing this thread)
+## The complete `(subsys, idx)` call-number space
 
-Decode the dispatch table at `0xfffffff02701a770` and correlate with the
-`sptm_*` function-name strings to produce the **complete `(subsys, idx) →
-symbol` mapping**. Half-day of mechanical RE; closes risk (8) and gives the
-Linux wrapper layer concrete call numbers to use. Everything else above is
-implementation work, not further RE.
+Scanned the M4 kernelcache (`com.apple.kernel` fileset) for every `GENTER`
+(`udf #0` = `0x00201420`) and reconstructed the preceding `movz`/`movk x16`
+sequence for each. Complete dump: `analysis/sptm/sptm-call-numbers.csv`.
+
+**148 unique `(subsys, idx)` pairs across 9 subsystems:**
+
+| subsys | count | idx range | named externally |
+|--------|-------|-----------|------------------|
+| `0x0`  | 50    | `0x0–0x31`| **1/50** (only `_sptm_retype` = `(0, 1)`) |
+| `0x3`  | 19    | `0x0–0x12`| 0/19 |
+| `0x5`  | 3     | `0x0–0x2` | 0/3 |
+| `0x6`  | 9     | `0x0–0x8` | 0/9 |
+| `0x7`  | 13    | `0x0–0xc` | 0/13 |
+| `0x9`  | 13    | `0x0–0xc` | **13/13** (cputrace — all `_sptm_cputrace_*`) |
+| `0xa`  | 6     | `0x0–0x5` | 0/6 |
+| `0xb`  | 19    | `0x0–0x12`| **19/19** (gen3dart/IOMMU — all `_sptm_gen3dart_*`) |
+| `0xd`  | 16    | `0x0–0xf` | 0/16 |
+
+So **33 of 148** have a public XNU export name; the remaining 115 are
+**XNU-internal inline genter sites** (e.g. compiled into `pmap_arm.c` via
+`SPTM_CALL`-style macros), invisible to the kernel's external symbol table.
+Their `(subsys, idx)` numbers are known; only their *symbolic name* is not.
+
+### What this means for the port
+
+For the Linux MMU wrapper layer (`arch/arm64/mm/sptm.c`), the integration
+pattern per call is:
+
+```c
+#define SPTM_PACK(subsys, idx) (((u64)(subsys) << 32) | (u32)(idx))
+
+static inline u64 sptm_call(u64 packed, u64 a, u64 b, u64 c, u64 d)
+{
+    u64 ret;
+    asm volatile("mov x16, %1\n"
+                 ".long 0x00201420\n"      /* GENTER */
+                 "mov %0, x0\n"
+                 : "=r"(ret)
+                 : "r"(packed), "r"(a), "r"(b), "r"(c), "r"(d)
+                 : "x0","x1","x2","x3","x16","memory");
+    return ret;
+}
+
+#define sptm_retype(...)   sptm_call(SPTM_PACK(0, 1), __VA_ARGS__)
+/* ...one wrapper per (subsys, idx) we use... */
+```
+
+### What's known for free vs needs per-call correlation
+
+- **Subsys `0xb` (19 calls)** — fully named, complete signatures recoverable
+  from `_sptm_gen3dart_*` stubs in the kernelcache. Plug straight into
+  `drivers/iommu/apple-dart.c`'s SPTM-aware path.
+- **Subsys `0x9` (13 calls)** — fully named (cputrace). Linux MMU port
+  doesn't need these.
+- **Subsys `0x0` (50 calls)** — only `_sptm_retype = (0,1)` named. The other
+  49 are the **bulk of the UAT page-table API** Linux needs. Per-call name
+  correlation requires either:
+  1. Walking each XNU genter site in `pmap_arm.c`/`vm_*` and reading the
+     surrounding function (its name appears in nearby assertion `__func__`
+     strings), or
+  2. Decoding SPTM's per-(subsys,idx) dispatch into the named handlers
+     inside SPTM's binary (each named SPTM function — `sptm_uat_map_table`,
+     `sptm_map_page`, etc. — has assertion strings that locate it; map
+     the dispatch input to the handler output).
+- **Subsystems `0x3`/`0x5`/`0x6`/`0x7`/`0xa`/`0xd` (66 calls)** — none named.
+  These are likely SoC platform / TLBI / hibernation / coprocessor /
+  exception-return families. Same correlation strategy needed.
+
+### Estimated correlation effort
+
+Mechanical RE, ~1–2 days of focused work to correlate all 115 unnamed calls
+to SPTM-internal names — likely fewer iterations because each XNU genter
+site sits inside a function whose `__func__` string (in a nearby assertion)
+gives the operation's name directly. For the Linux MMU port, you don't need
+*all* 115 — just the subset you actually call from arm64 mm code, probably
+~20–30 of them. The CSV at `analysis/sptm/sptm-call-numbers.csv` makes it
+trivial to iterate: pick an unnamed `(subsys, idx)`, disassemble the genter
+site VA, walk back to the containing function, read its assertion `__func__`.
+
+This is **not blocking** for starting the Linux port. You can begin with the
+3 cleanly-named subsystems (`gen3dart` for DART driver, `retype` for page
+typing) and add `sptm_uat_*` wrappers as each is identified during
+implementation. The CSV is the index.
