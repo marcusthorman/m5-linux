@@ -508,6 +508,73 @@ likely outcome, since iBoot loads m1n1 as if it were the kernel), then
 **patch 0004's stub is essentially complete** for the *boot-handoff* layer —
 the substantial remaining work is the Linux MMU port to `sptm_uat_*`.
 
+### iBoot side — what's gated on what (the packaging question)
+
+The SPTM binary alone can't say whether iBoot prepares the device tree the same
+way for a permissive-policy-signed m1n1 as for a stock XNU. iBoot itself
+(`Firmware/all_flash/iBoot.<board>.RELEASE.im4p`, ~1.1 MB compressed) is, like
+SPTM, **LZFSE + unencrypted** in 25F71 (`mBoot-18000.120.36`, decompresses to
+3 MB raw ARM64). So it is statically RE-able with no key-key recovery needed.
+
+Key strings recovered:
+
+- **`uses_sptm`** is a runtime boolean iBoot derives from the loaded kernel:
+  ```
+  ((kc_layout != NULL) && (kc_layout->present == 1) && (kc_layout->bx_size != 0))
+       == uses_sptm
+  ```
+  The assertion *enforces* that iBoot's SPTM-init path matches the kernel
+  image's structure.
+- iBoot's SPTM-side functions: **`lay_out_sptm_objects` / `layout_sptm_objects`**
+  (positions SPTM and the OS in memory), **`load_kernelcache`**, **`lay_out_opaque_kernelcache`**.
+- DT nodes iBoot writes: **`chosen/asmb`**, **`chosen/carveout-memory-map`**,
+  **`chosen/dynamic-object-map`**, **`chosen/manifest-properties`**,
+  **`chosen/manifest-object-properties`**, **`/bootobjects`**.
+- SPTM-specific DT keys: **`SPTM-ro` / `SPTM-rw` / `SPTM-rx`**, **`SPTM-uuid-offset`**,
+  **`sptm-path`**, **`apt-carveout-size-mb`**, **`data-segment-carveout-size`**.
+- Kernel-collection types: **`BootKC-entry`**, **`AuxKC-entry`** — iBoot loads
+  *Boot Kernel Collections* (Apple's Mach-O fileset format).
+- Notable absences: **no `legacy-boot`, no `skip-sptm`, no `non-sptm` fallback
+  strings**. iBoot 26.5 for M4+ has no visible code path that skips SPTM init.
+
+The permissive-policy strings (`force-research-policy`, `allow-unsealed`,
+`effective-security-mode-ap`, `policy-nonce-digests`, `trusted-boot-policy-measurement`)
+gate **which image iBoot accepts** at the signature/personalization layer.
+They are **separate from** the SPTM-init code path. So permissive policy
+changes signing requirements; it does not bypass SPTM setup.
+
+### What this means for m1n1 packaging on M4+ / M3-on-26+
+
+iBoot's SPTM registration of the OS image is gated on the **kernel image's
+`kc_layout` structure** (`present==1`, `bx_size != 0`). To get iBoot to register
+m1n1 with SPTM identically to how it registers stock XNU, m1n1 must be
+**packaged as an SPTM-aware Boot Kernel Collection** (BootKC) with a valid
+`kc_layout`. Concretely the package must:
+
+1. Be a Mach-O fileset (kernel collection) of the BootKC type.
+2. Carry the `kc_layout` descriptor declaring it SPTM-aware
+   (`present=1, bx_size != 0`).
+3. Have segments laid out so iBoot's `lay_out_sptm_objects` can place SPTM and
+   the OS's regions; the manifest entries (`SPTM-ro/rw/rx`) and the
+   `/bootobjects` / `chosen/asmb` / `chosen/dynamic-object-map` get filled in
+   by iBoot from this layout.
+
+This is a **packaging / installer concern, not a runtime shim concern**. The
+runtime side (issuing `(0x0:0xf)` from EL1 with VBAR set and MMU on) is
+unchanged — patch 0004 is still the right stub. The new work is in the
+installer toolchain: Asahi already builds custom kernel collections for
+pre-M4 platforms; for M4+ those collections must adopt the SPTM-aware
+BootKC layout.
+
+If the Asahi installer (or whatever tooling stands up the m1n1 image)
+correctly emits the new layout, iBoot does the SPTM bootstrap and DT prep
+**identically** to a stock-XNU boot — the open variable closes positively.
+
+The one fully un-answerable-from-static-analysis residual: what iBoot does
+when handed a non-SPTM-aware kernel on an M4+ system. The string evidence
+suggests "assertion failure / refuse," but I can't prove the absence of a
+quietly-tolerated path without running it.
+
 ### Net result: Linux must masquerade as XNU
 
 The XNU-shim path is now fully scoped. Linux on M4+/M3-on-26 needs:
@@ -798,7 +865,10 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | SPTM bootstrap stages                            | ✓ done  | early/tlbi/late/finalize; stage reg @ `0xfffffff027104000` (bits announce/`0x2000` before/`0x800` after); monotonic |
 | Who sets `enforce_after` (the gate for the shim) | ✓ done  | **iBoot, inside `sptm_bootstrap_late` at `0xe4f68`** — before the OS ever runs |
 | OS-side SPTM sibling calls before `(0x0:0xf)`    | ✓ done  | **none**: XNU `__TEXT_BOOT_EXEC` has only one SPTM call; idx `0xf` stub has zero non-boot callers |
-| iBoot's permissive-policy DT prep for m1n1       | ✗ open  | (not answerable from SPTM binary; either RE iBoot or hardware-test) |
+| iBoot accessibility (M4 board)                   | ✓ done  | LZFSE-compressed, unencrypted; `mBoot-18000.120.36`; raw 3 MB ARM64 |
+| iBoot's SPTM-setup gating                        | ✓ done  | gated on `kc_layout->present==1 && bx_size!=0` (BootKC structure), **not** on signature/policy |
+| iBoot's permissive-policy DT prep for m1n1       | ◑ part  | answered statically: iBoot will register m1n1 with SPTM **iff** m1n1 is packaged as an SPTM-aware BootKC. Final certainty needs a hardware test. |
+| m1n1 packaging requirement on M4+                | ✓ done  | must be a BootKC with a valid `kc_layout` (SPTM-aware). Installer/toolchain change, not a runtime shim change. |
 | Global passthrough/audit-only mode               | ✓ done  | **does NOT exist**; only per-subsystem knobs (`mapping-enforcement-mode` etc.) |
 | `uat_bootstrap_parse_dt` /chosen properties      | ◑ part  | known names: `mapping-enforcement-mode`, `pmap-max-asids`, `uat-enforce-gpu-carveout`, `uat-mapping-limit`; values TBD |
 | Per-domain `permissions` semantics — does any caller_domain get "self-managed PT"? | ✓ done | **NO.** Only 3 supervisor exec modes (SPTM/TXM/XNU); frame types entirely XNU_*/SPTM_*/TXM_*; ownership enforced inside SPTM API. Linux must masquerade as XNU and port MMU to `sptm_uat_*`. |

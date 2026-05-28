@@ -32,3 +32,4 @@ tools/linux-ref/
 *.o
 *.ko
 *.dtb.tmp
+# iBoot payloads are also Apple firmware, already covered by *.payload above
