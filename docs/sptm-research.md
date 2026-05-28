@@ -38,18 +38,23 @@ The static RE below maps the minimum call set needed.
 
 ## SPTM calling convention
 
-All runtime SPTM calls use a two-instruction trap:
+All runtime SPTM calls use a two-instruction sequence:
 
 ```asm
-mov  x16, #(subsys << 32 | idx)   ; pack call number
-udf  #0                            ; GL2 trap (magic = 0x00201420)
+mov     x16, #(subsys << 32 | idx)   ; pack call number
+.long   0x00201420                   ; GENTER — enter GL2
 ```
 
-GL2 catches the `udf #0` as an undefined instruction exception and dispatches
-on x16. Subsystem is in the upper 32 bits; call index in the lower 32 bits.
+The `0x00201420` word disassembles as `udf #0` in tools that don't know Apple's
+ISA, but it is **`GENTER`** — Apple's Guarded-ENTER instruction (the same
+encoding m1n1 already uses in `gxf_asm.S`). It is NOT an undefined-instruction
+trap. GENTER switches to GL2 and runs SPTM's resident `GXF_ENTER` handler, which
+dispatches on x16: subsystem in the upper 32 bits, call index in the lower 32.
+SPTM does its work and `GEXIT`s back to the instruction after the GENTER, so
+from the caller's side a call returns like a normal `bl`.
 
-Boot-time calls (in `__TEXT_BOOT_EXEC`) use the same encoding but without any
-pre/post hook wrappers — direct `mov x16 / udf #0` pairs.
+Boot-time calls (in `__TEXT_BOOT_EXEC`) use the same GENTER but without the
+pre/post hook wrappers — a direct `mov x16 / genter` pair.
 
 ---
 
@@ -182,10 +187,44 @@ immediately after setting the exception vector base:
 
 ---
 
+## Shim entry draft (m1n1 side)
+
+First cut of the m1n1-side entry mechanism for the boot handoff — see
+`m1n1-patches/0004-sptm-add-xnu-shim-boot-handoff.patch`. **This does not yet
+boot Linux**; it encodes what the static RE established and isolates the
+remaining unknowns so each can be tested on hardware.
+
+What it gets right (from RE):
+- The call is `GENTER` (`0x00201420`), reusing m1n1's existing encoding — not a
+  fake `udf`. m1n1 already has GENTER/GEXIT and GXF plumbing.
+- Boot handoff call number is `(0x0, 0xf)`, issued via a bare `mov x16,#0xf;
+  genter`. A small `sptm_call(callnum, a,b,c,d)` stub places the number in x16.
+- It must **not** call m1n1's `_gxf_init()` — that repoints `GXF_ENTER_EL1` at
+  m1n1's own GL2 vectors. The shim relies on iBoot/SPTM's resident `GXF_ENTER`,
+  so it issues a bare GENTER. (Caveat: if m1n1's hypervisor has already run
+  `gxf_init`, `GXF_ENTER` no longer points at SPTM — the shim must run first or
+  restore SPTM's vector. Tracked as a follow-up.)
+- Chip guard via `chip_id` (T8132/T6040/T6041/T8142/T6050/T6051); no-op on
+  pre-M4 SoCs.
+
+Placement: `main.c` calls `sptm_boot_handoff()` at the next-stage handoff. XNU
+makes the call with the **MMU on**, but m1n1's handoff runs **after**
+`mmu_shutdown()`. The draft issues the call *before* the shutdowns — a guess.
+
+Open questions blocking a working shim (need SPTM binary RE or hardware):
+1. **Pre-state SPTM validates** — exact EL/MMU/register state expected on entry
+   to `(0x0:0xf)`. Drives the placement vs. `mmu_shutdown()` question.
+2. **Non-XNU boot object** — whether SPTM lets anything but signed XNU proceed
+   past the handoff, or whether there is a passthrough/relaxed mode.
+3. **Additional required calls** — whether `gen3dart` init / `retype` / others
+   must run before a Linux handoff is accepted, or if `(0x0:0xf)` suffices.
+
+---
+
 ## Runtime call hooks
 
 Every runtime SPTM stub (i.e., those NOT in `__TEXT_BOOT_EXEC`) wraps the
-`mov x16 / udf #0` pair with two hook calls:
+`mov x16 / genter` pair with two hook calls:
 
 ```asm
 ; Canonical runtime stub (_sptm_retype at 0xfffffe000c066780):
@@ -251,12 +290,13 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 
 | Question                                        | Status  | Answer                                    |
 |-------------------------------------------------|---------|-------------------------------------------|
-| SPTM calling convention                         | ✓ done  | `mov x16, #(subsys<<32|idx); udf #0`     |
+| SPTM calling convention                         | ✓ done  | `mov x16, #(subsys<<32|idx); GENTER` (0x00201420) |
 | Boot handoff call number                        | ✓ done  | `(0x0, 0xf)` — single call after VBAR    |
 | `__DATA_SPTM` structure                         | ✓ done  | 336KB, all-zero at load, GL2-initialized |
 | `currentg` register purpose                     | ✓ done  | GL2 re-entrancy guard; pre-hook spins     |
 | Number of subsystems                            | ✓ done  | 9 active (0x0, 0x3, 0x5–0x7, 0x9–0xb, 0xd) |
-| What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE                       |
+| m1n1 shim entry mechanism                       | ◑ draft | patch 0004 — genter stub + (0x0:0xf), unverified |
+| What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE (drives shim pre-state) |
 | Minimum call sequence for shim                  | ✗ open  | Likely just `(0x0:0xf)` but unverified   |
 | Passthrough mode for non-macOS boot targets     | ✗ open  | Unknown                                   |
 | Subsystem semantics for 0x3, 0x5, 0x6, 0x7, 0xd | ✗ open | Need deeper caller tracing               |

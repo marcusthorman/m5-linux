@@ -1,0 +1,148 @@
+From: m5-linux project
+Subject: [PATCH 4/N] sptm: Draft XNU-shim boot-handoff entry for M4/M5
+
+DRAFT / SCAFFOLD — does not yet boot Linux. This adds the m1n1-side entry
+mechanism for the single boot-time SPTM call, reverse-engineered from the
+XNU kernelcache (see docs/sptm-research.md). It isolates the genuine open
+questions so each can be tested on hardware independently.
+
+Key facts this encodes (all verified by static RE of Mac16,1 kernelcache):
+  * SPTM runs at GL2, resident, installed by iBoot BEFORE m1n1 runs.
+  * XNU reaches it with `mov x16, #<callnum>; genter`. The "udf #0 / magic
+    0x00201420" seen in disassembly IS Apple's GENTER instruction — the same
+    encoding m1n1 already uses in gxf_asm.S. It is NOT an undefined insn.
+  * The one boot-time call is (subsys=0, idx=0xf), issued right after
+    `msr vbar_el1`, via a raw genter (no pre/post hooks, no currentg guard).
+
+What is deliberately DIFFERENT from m1n1's existing gxf path: we must NOT run
+_gxf_init(). That repoints GXF_ENTER_EL1 at m1n1's own GL2 vectors. The shim
+must genter into SPTM's *pre-existing* GXF_ENTER handler, so it issues a bare
+genter and relies on iBoot/SPTM having already enabled GXF.
+
+OPEN QUESTIONS (marked XXX in code; need SPTM binary RE or hardware):
+  1. Pre-state SPTM validates: it expects EL2 + MMU enabled; m1n1's handoff
+     runs after mmu_shutdown() (MMU off). Ordering vs. mmu_shutdown is a guess.
+  2. Whether a non-XNU boot object is permitted to proceed past this call.
+  3. Whether further calls (gen3dart init, retype, ...) are required first.
+
+--- /dev/null
++++ b/src/sptm_asm.S
+@@
++/* SPDX-License-Identifier: MIT */
++/*
++ * SPTM (Secure Page Table Monitor) call stub for M4/M5.
++ *
++ * Reuses the GENTER encoding from gxf_asm.S. Unlike gl2_call(), this does NOT
++ * install m1n1's GL vectors; the genter dispatches into SPTM's resident GL2
++ * handler (set up by iBoot). SPTM does its work at GL2 and gexits back to the
++ * instruction following genter, so from the caller this returns like a call.
++ */
++#include "cpu_regs.h"
++
++#define genter .long 0x00201420
++
++.globl sptm_call
++.type sptm_call, @function
++sptm_call:
++    /* x0 = packed call number (subsys << 32 | idx)
++     * x1..x4 -> SPTM argument registers x0..x3
++     * call number goes in x16, mirroring the XNU stubs. */
++    mov x16, x0
++    mov x0, x1
++    mov x1, x2
++    mov x2, x3
++    mov x3, x4
++    genter
++    ret
+
+--- /dev/null
++++ b/src/sptm.h
+@@
++/* SPDX-License-Identifier: MIT */
++#ifndef __SPTM_H__
++#define __SPTM_H__
++
++#include "types.h"
++
++/* Pack an SPTM call number: subsystem in the upper 32 bits, index in lower. */
++#define SPTM_CALL(subsys, idx) (((u64)(subsys) << 32) | (u32)(idx))
++
++/* The single boot-time handoff call XNU makes after setting VBAR_EL1. */
++#define SPTM_BOOT_HANDOFF SPTM_CALL(0x0, 0xf)
++
++/* Raw SPTM call: genter into the resident GL2 monitor. */
++u64 sptm_call(u64 callnum, u64 a, u64 b, u64 c, u64 d);
++
++/* True on SoCs that ship SPTM (M4 and later). */
++bool soc_has_sptm(void);
++
++/* Issue the boot handoff. No-op (returns 0) on pre-SPTM SoCs. */
++int sptm_boot_handoff(void);
++
++#endif
+
+--- /dev/null
++++ b/src/sptm.c
+@@
++/* SPDX-License-Identifier: MIT */
++#include "sptm.h"
++#include "soc.h"
++#include "utils.h"
++
++bool soc_has_sptm(void)
++{
++    /* SPTM was introduced with M4. Every M4/M5 SoC ships it. */
++    switch (chip_id) {
++        case T8132:             /* M4 */
++        case T6040:             /* M4 Pro */
++        case T6041:             /* M4 Max */
++        case T8142:             /* M5 */
++        case T6050:             /* M5 Pro */
++        case T6051:             /* M5 Max */
++            return true;
++        default:
++            return false;
++    }
++}
++
++int sptm_boot_handoff(void)
++{
++    if (!soc_has_sptm())
++        return 0; /* pre-M4: no SPTM, nothing to do */
++
++    /* XXX OPEN(1): SPTM expects EL2 + MMU enabled here. The m1n1 handoff in
++     * main.c currently runs after mmu_shutdown(). The exact pre-state SPTM
++     * validates is unknown (needs SPTM binary RE). For now we issue the call
++     * before the shutdowns; revisit once the validated pre-state is known. */
++    if (!supports_gxf()) {
++        printf("SPTM: GXF not supported on this CPU?! aborting handoff\n");
++        return -1;
++    }
++
++    printf("SPTM: issuing boot handoff call (0x0:0xf) via genter...\n");
++    u64 ret = sptm_call(SPTM_BOOT_HANDOFF, 0, 0, 0, 0);
++    printf("SPTM: boot handoff returned 0x%lx\n", ret);
++
++    /* XXX OPEN(2,3): whether a non-XNU boot object may proceed past this, and
++     * whether further calls (gen3dart init / retype / ...) are required before
++     * Linux can run, is unverified. */
++    return 0;
++}
+
+--- a/src/main.c
++++ b/src/main.c
+@@ ... (in the next-stage handoff, after "Preparing to run next stage") ...
++    /* M4+: satisfy the SPTM boot protocol before leaving m1n1. DRAFT — see
++     * sptm.c. Issued before the shutdowns because XNU makes it with MMU on;
++     * ordering is an open question. */
++    if (sptm_boot_handoff() < 0)
++        panic("SPTM boot handoff failed\n");
++
+     nvme_shutdown();
+     exception_shutdown();
+
+--- a/Makefile
++++ b/Makefile
+@@ ... (in OBJECTS, near gxf.o gxf_asm.o) ...
+ 	gxf.o gxf_asm.o \
++	sptm.o sptm_asm.o \
