@@ -50,12 +50,16 @@ hardware runs were performed.
 5. **No non-XNU supervisor domain exists.** `EXEC_MODE_*` enumerates only
    `SPTM_DEFAULT`, `TXM_DEFAULT`, `XNU_DEFAULT`. Frame types are
    `XNU_*` / `SPTM_*` / `TXM_*`. **Linux must masquerade as XNU.**
-6. **iBoot's SPTM setup is gated on the kernel image's `kc_layout`**,
-   not on signature or policy. If `kc_layout->present != 1`, iBoot panics
-   at `0x1223a4` (confirmed by disassembly). m1n1 must be packaged as
-   an **SPTM-aware Boot Kernel Collection** for iBoot to register it
-   with SPTM. Permissive boot policy gates *which* image iBoot accepts,
-   not the SPTM-init path.
+6. **iBoot's SPTM setup is gated on the kernel image being a properly-
+   shaped Boot Kernel Collection.** iBoot's `load_kernelcache` rejects
+   the image (panics) if it isn't `MH_FILESET` with the standard Apple
+   segment layout. m1n1 must be packaged as an SPTM-aware BootKC for
+   iBoot to register it with SPTM. Permissive boot policy gates *which*
+   image iBoot accepts, not the SPTM-init path. The packager is at
+   `scripts/pack-bootkc.py`; the full RE writeup is in
+   `docs/bootkc-packaging.md`. (Earlier claim of a literal
+   `kc_layout->present` field has been downgraded — `__DATA_SPTM` is
+   all-zero on disk and runtime-populated.)
 7. **Per-SoC activation timeline** (BuildManifest diff across releases):
    M2 had SPTM in its boot chain by 15.0; M4 was born with it (15.2);
    **M3 only got SPTM at macOS 26.0** (none from launch 14.1 through
