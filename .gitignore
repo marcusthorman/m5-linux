@@ -33,3 +33,6 @@ tools/linux-ref/
 *.ko
 *.dtb.tmp
 # iBoot payloads are also Apple firmware, already covered by *.payload above
+
+# Claude Code per-machine settings — personal risk acceptances, not shared
+.claude/settings.local.json

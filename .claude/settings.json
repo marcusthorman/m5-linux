@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./tools/ipsw macho *)",
+      "Bash(./tools/ipsw img4 *)",
+      "Bash(./tools/ipsw dtree *)",
+      "Bash(./tools/ipsw kernel *)",
+      "Bash(./tools/ipsw info *)",
+      "Bash(./tools/ipsw info)",
+      "Bash(./tools/ipsw --help)",
+      "Bash(./tools/ipsw fw *)",
+      "Bash(./tools/ipsw download *)",
+      "Bash(tools/ipsw macho *)",
+      "Bash(tools/ipsw kernel *)",
+      "Bash(tools/ipsw dtree *)",
+      "Bash(tools/ipsw img4 *)"
+    ]
+  }
+}
