@@ -409,6 +409,68 @@ and is there a permission set that grants a caller_domain "manage your own PT
 range" without per-page SPTM calls? That answer determines whether Linux needs
 an MMU port or just a richer shim.
 
+### Permission model — answer: there is no non-XNU self-managed PT mode
+
+Searched the binary for the domain/exec-mode taxonomy. **`EXEC_MODE_*`
+enumerates the complete set of supervisor domains:**
+
+```
+EXEC_MODE_SPTM_DEFAULT          # SPTM itself (GL2)
+EXEC_MODE_TXM_DEFAULT           # TXM (Trusted Execution Monitor)
+EXEC_MODE_XNU_DEFAULT           # XNU (the OS) — the only "OS-kernel" mode
+EXEC_MODE_XNU_ROZONE_RW         # XNU transient RW into the rozone
+EXEC_MODE_XNU_USER_DEFAULT
+EXEC_MODE_XNU_USER_JIT_RW
+EXEC_MODE_XNU_USER_TPRO_RW
+```
+
+There is **no `EXEC_MODE_LINUX_*`, no `_GUEST_*`, no generic third-party OS mode**.
+The frame-type taxonomy is the same story: every page-frame class is `XNU_*`,
+`SPTM_*`, or `TXM_*`. Sample of the XNU frame types SPTM enforces directly:
+
+```
+XNU_DEFAULT, XNU_RO, XNU_ROZONE, XNU_KERNEL_RESTRICTED,
+XNU_PAGE_TABLE, XNU_PAGE_TABLE_COMMPAGE, XNU_PAGE_TABLE_SHARED,
+XNU_PAGE_TABLE_ROZONE, XNU_STAGE2_PAGE_TABLE, XNU_STAGE2_ROOT_TABLE,
+XNU_SHARED_ROOT_TABLE, XNU_USER_ROOT_TABLE, XNU_SUBPAGE_USER_ROOT_TABLES,
+XNU_USER_EXEC, XNU_USER_JIT, XNU_USER_DEBUG, XNU_USER_TPRO,
+XNU_COMMPAGE_RO/RW/RX, XNU_IO, XNU_IOMMU, XNU_PROTECTED_IO,
+XNU_RESTRICTED_IO, XNU_TAG_STORAGE, XNU_COPROCESSOR_RO_IO,
+XNU_CPUTRACE_PA_BUFFER, XNU_CPUTRACE_VA_BUFFER, XNU_RO_DBG_RW
+```
+
+Retype handlers are XNU-specific too: `xnu_exec_retype_out`,
+`xnu_iommu_retype_out`, `xnu_generic_retype_out`,
+`xnu_subpage_user_root_tables_retype_out`, `xnu_rozone_retype_out`,
+`xnu_tag_storage_retype_{in,out}`.
+
+`VIOLATION_FRAME_OWNER` does exist (every frame has an `owner_domain`, and
+`current_type_params->owner_domain` is asserted) — **but** ownership is checked
+*inside* the SPTM API, not as a "calling_domain == owner_domain → bypass the
+call" shortcut. SPTM's purpose is to *be* the gate; same-domain operations
+still go through `sptm_uat_*`.
+
+### Net result: Linux must masquerade as XNU
+
+The XNU-shim path is now fully scoped. Linux on M4+/M3-on-26 needs:
+
+1. **Boot shim (in m1n1)** — small. Drive SPTM through whatever sibling boot
+   calls are required, declare Linux's RO/text range, and issue `(0x0:0xf)` to
+   trigger `enforce_after`. Patch 0004 has the entry mechanism.
+2. **Linux MMU port to the SPTM UAT API** — substantial but bounded. Every
+   PT-update path (`set_pte`, `pmd_populate`, TLB invalidate, …) routes through
+   `sptm_uat_map_table` / `sptm_retype` / `sptm_uat_unmap_table` / etc. Linux
+   self-identifies as `EXEC_MODE_XNU_DEFAULT` and uses `XNU_*` frame types
+   for its pages. This is the same architectural pattern Apple did when
+   transitioning XNU itself from a direct-pmap model to the SPTM-mediated
+   model — work envelope is well-defined and concrete.
+3. **Domain assignment + RO-range declaration** — handled at boot by the
+   sibling call(s) we still need to RE (the immediate next target, smaller
+   scope than the MMU port).
+
+100% reliability per pinned firmware is still on the table — there's nothing
+non-deterministic. The cost is the MMU port, not a reliability gap.
+
 ---
 
 ## SPTM calling convention
@@ -678,7 +740,7 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | SPTM bootstrap stages                            | ✓ done  | early/tlbi/late/finalize; stage reg @ `0xfffffff027104000` (bits announce/`0x2000` before/`0x800` after); monotonic |
 | Global passthrough/audit-only mode               | ✓ done  | **does NOT exist**; only per-subsystem knobs (`mapping-enforcement-mode` etc.) |
 | `uat_bootstrap_parse_dt` /chosen properties      | ◑ part  | known names: `mapping-enforcement-mode`, `pmap-max-asids`, `uat-enforce-gpu-carveout`, `uat-mapping-limit`; values TBD |
-| Per-domain `permissions` semantics — does any caller_domain get "self-managed PT"? | ✗ open | THE question that decides whether Linux needs an MMU port or just a shim |
+| Per-domain `permissions` semantics — does any caller_domain get "self-managed PT"? | ✓ done | **NO.** Only 3 supervisor exec modes (SPTM/TXM/XNU); frame types entirely XNU_*/SPTM_*/TXM_*; ownership enforced inside SPTM API. Linux must masquerade as XNU and port MMU to `sptm_uat_*`. |
 | m1n1 shim entry mechanism                       | ◑ draft | patch 0004 — genter stub + (0x0:0xf), unverified |
 | What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE (drives shim pre-state) |
 | Minimum call sequence for shim                  | ✗ open  | Likely just `(0x0:0xf)` but unverified   |
