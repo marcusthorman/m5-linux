@@ -36,3 +36,6 @@ tools/linux-ref/
 
 # Claude Code per-machine settings — personal risk acceptances, not shared
 .claude/settings.local.json
+
+# Build workspace — cloned upstream repos and build outputs
+build/
