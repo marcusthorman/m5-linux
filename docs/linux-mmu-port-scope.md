@@ -1,0 +1,191 @@
+# Linux MMU port to the SPTM UAT API — scoping
+
+Once the boot shim drives SPTM to `enforce_after` (see `sptm-research.md`),
+Linux runs as `EXEC_MODE_XNU_DEFAULT` and **every page-table mutation must go
+through `sptm_uat_*` calls**. This doc scopes that port: which SPTM entry
+points exist, which Linux operations they replace, where the changes land in
+`arch/arm64/`, and a realistic work envelope.
+
+The port is gated by a new `CONFIG_ARM64_APPLE_SPTM` (or similar). When off,
+the kernel builds identically to today and runs on pre-SPTM hardware
+(M1/M2/M3 ≤15.x) unchanged. When on, every PT-write site is wrapped.
+
+## SPTM API surface (extracted from `sptm.t8132.release.payload`, 26.5)
+
+All names are real symbols in the binary's strings — see
+`analysis/sptm/sptm.t8132.release.payload`. Grouped by what Linux needs them
+for.
+
+### Page-table state lifecycle (per address-space, ≈ `struct mm_struct`)
+
+| SPTM call                     | Purpose |
+|-------------------------------|---------|
+| `sptm_uat_init_state`         | Allocate a per-mm state object (root-table tracking, refcounts) |
+| `sptm_uat_destroy_state`      | Tear it down |
+| `sptm_uat_get_info`           | Query state-object fields (size, root paddr, mode) |
+| `uat_state_get_root_table_paddr` / `_set_root_table_paddr` | Root-table accessors |
+| `sptm_surt_alloc` / `sptm_surt_free` | Allocate/free a *sub-page user root table* (TTBR0 root) — Apple's TTBR0 root tables are sub-page (multiple per page); helpers reflect that |
+
+### Page-table mutation (the hot path)
+
+| SPTM call                     | Replaces in Linux |
+|-------------------------------|-------------------|
+| `sptm_map_page`               | `__set_pte` / `__set_ptes` (leaf PTE install) |
+| `sptm_uat_map_table`          | `pmd_populate`, `pud_populate`, `p4d_populate` (install lower-level table) |
+| `sptm_uat_unmap_table`        | `pmd_clear`, `pud_clear`, `p4d_clear` |
+| `sptm_uat_map_continue`       | Chunked map operations (large region) |
+| `sptm_uat_unmap_begin` / `sptm_uat_unmap_continue` | Phased unmap (begin/iterate/finish) — matches how Linux's `__pte_alloc` / `unmap_region` work in chunks |
+| `sptm_uat_prepare_fw_unmap_begin` / `_continue` | Firmware-region unmap variant |
+| `sptm_update_region`          | Bulk update of a contiguous VA range (used by `__create_pgd_mapping`, `apply_to_pte_range`) |
+| `sptm_update_papt`            | Update of the physical-aperture page table (Apple's flat phys map ≈ Linux's `linear_map`) |
+| `sptm_disjoint_op` / `sptm_update_disjoint` / `sptm_update_disjoint_multipage` | Batched updates on **non-contiguous** pages — matches `set_ptes` for multiple discontiguous targets |
+| `sptm_region_op`              | Generic region op (a switch on op-code; covers map/unmap/update in one entry point) |
+
+### Frame typing (page-role transitions)
+
+| SPTM call                     | Linux site |
+|-------------------------------|-----------|
+| `sptm_retype`                 | Whenever a page changes role: `XNU_DEFAULT → XNU_PAGE_TABLE` when allocating a PT page (`__pte_alloc`, `pmd_alloc_one`, `pud_alloc_one`, `pgd_alloc`); reverse on freeing. Also `XNU_DEFAULT → XNU_RO` for `mark_rodata_ro`, `XNU_RO → XNU_DEFAULT` for `set_memory_rw` in module/bpf paths |
+| `uat_retype_in` / `uat_retype_out` | The retype handlers SPTM invokes (callee-side; Linux just calls `sptm_retype`) |
+| `sptm_drop_table_refcnts`     | When tearing down an address space, release SPTM's refcounts on the PT pages |
+
+### ASID / context
+
+| SPTM call                     | Linux site |
+|-------------------------------|-----------|
+| `sptm_uat_set_ctx_id`         | `cpu_switch_mm` — when switching active mm, bind the new ASID to the state object |
+| `sptm_uat_remove_ctx_id`      | `destroy_context` / on ASID rollover |
+| `sptm_switch_root`            | The TTBR1/TTBR0 write itself — must go through SPTM, not raw `msr ttbr*_el1` |
+
+Note the DT-property gate: `pmap-max-asids` (must be > 0, ≤ 0x10000). Linux's
+`asid_bits` calculation must respect SPTM's bound.
+
+### TLB invalidation
+
+| SPTM call                     | Linux site |
+|-------------------------------|-----------|
+| `sptm_broadcast_tlbi`         | All `flush_tlb_*` paths: `flush_tlb_all`, `flush_tlb_mm`, `flush_tlb_page`, `flush_tlb_range`, `flush_tlb_kernel_range`. Linux's per-CPU `tlbi` is replaced by a single SPTM call that fans out to all CPUs / the requested ASID set |
+| `issue_tlbi_by_addr` / `issue_tlbi_by_asid` | (Internal SPTM helpers — Linux does not call directly) |
+| `perform_gmmu_tlbi_if_needed` | (Internal — GPU MMU TLBI is handled by SPTM during retype) |
+
+### Per-CPU lifecycle
+
+| SPTM call                     | Linux site |
+|-------------------------------|-----------|
+| `sptm_register_cpu`           | `secondary_start_kernel` — register each AP CPU with SPTM before bringing it online |
+| `sptm_cpu_init`               | Per-CPU early init |
+| `sptm_resume_cpu`             | `cpu_resume` (suspend/resume, hotplug-on) |
+| `sptm_n_cpus` / `sptm_cpu_id` | Read-only queries (probably unused — Linux uses MPIDR) |
+
+### IO / IOMMU (mostly already in DART driver)
+
+| SPTM call                     | Site |
+|-------------------------------|-----|
+| `sptm_register_io_frame`      | When mapping device MMIO into the kernel (`ioremap`) |
+| `sptm_init_register_allow_io_range` | One-time bootstrap registration of allowed IO ranges from `/chosen` |
+| `sptm_iommu_reg_base` / `sptm_gen3dart_*` / `sptm_t8110dart_*` | DART/IOMMU configuration — likely all consumed inside Apple-DART driver (already lives in `drivers/iommu/apple-dart.c`); needs SPTM-aware variant |
+| `sptm_nvme_*`                 | NVMe-specific IOMMU helpers — handled by Apple NVMe driver |
+
+### Out of scope for initial port
+
+- **Hibernation:** `sptm_hib_*` — disable `CONFIG_HIBERNATION` on M4+ initially
+- **CPU tracing:** `sptm_cputrace_*` — performance counters, optional
+- **Guest mode:** `sptm_guest_*` — Linux runs as the host, not as an SPTM-managed guest (KVM stage-2 is a separate, later question — see Risks)
+- **Shared region / commpage:** `sptm_configure_shared_region`, `sptm_set_shared_region`, `sptm_slide_region` — Apple's commpage equivalent. Linux uses VDSO; if any shared region work is needed, scope it after the basics are running
+
+## Where the changes land in `arch/arm64/` (from `tools/linux-ref`)
+
+| File | Size today | What changes |
+|------|-----------|--------------|
+| `arch/arm64/mm/sptm.c` (**new**) | — | The wrapper layer: `sptm_uat_*` packed-call thunks + helper inlines. Probably 500–1000 LoC |
+| `arch/arm64/include/asm/sptm.h` (**new**) | — | API surface, frame-type/perm enums, packed-call macros |
+| `arch/arm64/include/asm/pgtable.h` | (`__set_pte`, `__set_ptes`, `*_clear`) | ~50–150 LoC: route PT-mutation primitives through `sptm.h` helpers under the CONFIG. The READ-side (`pte_val`, `pte_present`, …) is unchanged |
+| `arch/arm64/mm/mmu.c` | 60 KB | The biggest delta: `__create_pgd_mapping`, `alloc_init_p*d`, kernel-text/rodata setup. Touch sites where it directly writes PT entries; route through SPTM. ~200–500 LoC of changes |
+| `arch/arm64/mm/contpte.c` | 21 KB | Contiguous-PTE optimization — every bulk-PTE update site needs SPTM batching (`sptm_update_disjoint_multipage` / `sptm_update_region`). ~100–200 LoC |
+| `arch/arm64/mm/pageattr.c` | 11 KB | `set_memory_ro/rw/x/nx`, module text → uses `sptm_retype` + region updates. ~100 LoC |
+| `arch/arm64/mm/context.c` | 11 KB | ASID alloc and rollover: bind via `sptm_uat_set_ctx_id` instead of raw TTBR-ASID writes. ~100–200 LoC |
+| `arch/arm64/mm/pgd.c` | 1 KB | `pgd_alloc` / `pgd_free` — route through `sptm_surt_alloc/free`. ~50 LoC |
+| `arch/arm64/mm/proc.S` | 14 KB | `cpu_do_switch_mm`, `cpu_do_resume` — the raw TTBR writes get replaced by an SPTM call. ~100–200 LoC |
+| `arch/arm64/include/asm/tlbflush.h` | (the `flush_tlb_*` family) | Route all `flush_tlb_*` to `sptm_broadcast_tlbi` under CONFIG. ~100 LoC |
+| `arch/arm64/mm/fault.c` | 29 KB | Mostly unchanged — page-fault path doesn't directly write PTs, but `do_anonymous_page` / `do_fault` reach via `set_pte_at` which is already routed at the pgtable layer |
+| `arch/arm64/kernel/smp.c` | — | `secondary_start_kernel` adds `sptm_register_cpu` |
+| `arch/arm64/kernel/cpu_errata.c` / Kconfig | — | New `CONFIG_ARM64_APPLE_SPTM`, depends on SoC selection |
+| (kbuild) `arch/arm64/Kbuild`, `arch/arm64/mm/Makefile` | — | Add `sptm.o` |
+
+## LoC envelope estimate
+
+**Total: ~1,500–3,000 lines of new and changed kernel code**, concentrated
+in `arch/arm64/mm/` and `arch/arm64/include/asm/`. Most of it is the new
+`sptm.c` wrapper plus targeted point-changes at every PT-mutation primitive,
+all gated by `CONFIG_ARM64_APPLE_SPTM`.
+
+For calibration against other arm64 features:
+- KAISER/KPTI: ~1500 lines
+- arm64 LPA2: ~2000 lines
+- arm64 MTE: ~3000 lines
+- arm64 PAC: ~500 lines
+
+So this is a "significant arm64 feature port" magnitude — comparable to MTE.
+Not a small patch, not a multi-year rewrite. The work is parallelizable
+(separate areas: pgtable.h, context.c, tlbflush.h, mmu.c).
+
+## Risks & open questions
+
+1. **TLB-invalidate granularity & cost.** Linux's per-CPU `tlbi vmalle1is` is
+   cheap; `sptm_broadcast_tlbi` is a GL2 round-trip. Performance impact on
+   `munmap`-heavy / fork-heavy workloads is unknown. May need a batching layer
+   in the wrapper.
+
+2. **`sptm_retype` cost on PT-page allocation.** Every new PT page costs a GL2
+   trip to type it `XNU_PAGE_TABLE`. The fault path may need a per-CPU cache
+   of pre-typed PT pages.
+
+3. **Contiguous PTE / hugepage interplay.** arm64's contiguous-PTE optimization
+   batches 16/128 entries. SPTM call signatures need to accept these batches
+   efficiently — `sptm_update_disjoint_multipage` looks right but signatures
+   are unconfirmed. Open RE.
+
+4. **`init_mm` bootstrap order.** Linux sets up `init_mm` and the kernel
+   page tables *very* early — before normal allocators are up. SPTM calls
+   must be functional at that point. Need to verify against the SPTM
+   "after bootstrap, before OS hands off again" state.
+
+5. **KVM stage-2.** Linux KVM uses stage-2 page tables for guests. SPTM has
+   `XNU_STAGE2_PAGE_TABLE` / `_ROOT_TABLE`, but exposing KVM through SPTM
+   doubles the API surface. **Scope it as a follow-on** — initial port boots
+   without KVM, then add KVM later.
+
+6. **GCS (Guarded Control Stack).** New arm64 feature; `arch/arm64/mm/gcs.c`
+   exists. Interaction with SPTM's frame types is undefined here. Probably
+   also a follow-on.
+
+7. **Permission/`table_permissions` packing.** The `sptm_register_dispatch_table`
+   `permissions` argument is opaque packed bits. For the *boot* shim Linux
+   doesn't register tables, but for some SPTM operations the wrapper layer may
+   need to construct permission values. **Needs decode** from XNU's caller
+   side (look at how XNU constructs permissions for its CTRR dispatch table).
+
+8. **Exact `(subsys, idx)` numbers for each `sptm_uat_*`.** I have the symbol
+   names; I don't yet have the SPTM call-number for each. The boot handoff is
+   `(0x0, 0xf)`. Most UAT operations are likely in subsystem 0 or in a UAT
+   subsystem. Decoding the `(subsys, idx) → handler` table at `0x1a770` and
+   correlating with the named symbols closes this — it's mechanical RE,
+   ~half-day of focused work.
+
+## What's *not* needed (worth restating)
+
+- No new compiler, no clang fork, no toolchain change.
+- No new ABI on the Linux-userspace side — userspace doesn't see SPTM.
+- No changes outside `arch/arm64/`; generic mm/ is untouched.
+- `init_mm` and `init_pg_dir` data structures are unchanged in *layout*; only
+  the *writes* into them are routed.
+- Drivers are unchanged (DART driver already wraps IOMMU calls; SPTM-DART
+  changes are inside `drivers/iommu/apple-dart.c` only).
+
+## Next concrete RE step (if continuing this thread)
+
+Decode the dispatch table at `0xfffffff02701a770` and correlate with the
+`sptm_*` function-name strings to produce the **complete `(subsys, idx) →
+symbol` mapping**. Half-day of mechanical RE; closes risk (8) and gives the
+Linux wrapper layer concrete call numbers to use. Everything else above is
+implementation work, not further RE.
