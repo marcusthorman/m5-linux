@@ -36,6 +36,52 @@ The static RE below maps the minimum call set needed.
 
 ---
 
+## SPTM binary — accessible (the unblock)
+
+The SPTM binary ships in the IPSW as a per-chip firmware blob and is **not
+encrypted**. This means the boot protocol can be reversed from the callee side
+directly, not just inferred from XNU. Extract with `analysis/sptm/extract-sptm.sh`.
+
+| Path | Chip | Notes |
+|------|------|-------|
+| `Firmware/sptm.t8132.release.im4p` | M4      | present |
+| `Firmware/sptm.t6041.release.im4p` | M4 Max  | present (no t6040 / M4 Pro blob) |
+| `Firmware/sptm.t8142.release.im4p` | M5      | present |
+| `Firmware/sptm.t6050.release.im4p` | M5 Pro  | present (no t6051 / M5 Max) |
+| `Firmware/txm.macosx.release.im4p` | all     | Trusted Execution Monitor (single) |
+
+- **im4p payload is LZFSE-compressed, no KBAG** → decompresses to a plain
+  **ARM64e `MH_EXECUTE` Mach-O** (~1.2 MB). PIE, NoUndefs, stripped (1 symbol).
+- **Source version 611.120.6 across M4 and M5** (per-chip binaries differ only
+  in chip constants). The boot protocol is therefore the same on M4 and M5 —
+  a shim validated on M4 should carry to M5. M5 Pro (t6050) is larger (1.37 MB),
+  likely multi-die handling.
+- Layout: `__TEXT_EXEC.__text` ≈ 381 KB of code; entry `0xfffffff0270ac388`
+  (T8132). Boot structures live in `__BOOTDATA` (80 KB) and `__LATE_CONST`.
+
+### What the strings already tell us (callee side)
+
+The binary carries assertion/function-name strings (not symbols) that sketch the
+boot path and the validation rules — directly relevant to the shim's open
+questions:
+
+- `uat_bootstrap_parse_dt` — **SPTM parses the device tree at bootstrap.**
+- `handoff_region` with fields `micro_magic`, `powered_off` — the SPTM↔XNU
+  handoff structure (the callee-side view of XNU's all-zero `__DATA_SPTM`).
+- `[SPTM] Synchronous exception taken from guest before XNU bootstrap`,
+  `[PANIC DURING BOOTSTRAP]`, `[SK BOOTSTRAP PANIC]` — SPTM has an explicit
+  pre-XNU-bootstrap phase with its own fault handling.
+- A **UAT** (Unified Address Translation) subsystem: `sptm_uat_init_state`,
+  `sptm_uat_map_table`, `sptm_retype`, `uat_retype_in/out`, and a wall of
+  `VIOLATION_UAT_INVALID_{TYPE,SUBTYPE,ROOT_TABLE,VADDR,PADDR,PT_LEVEL,REFCNT,
+  …}` checks — the page-table-frame invariants SPTM enforces on every call.
+
+Next: disassemble `__TEXT_EXEC` from entry `0xfffffff0270ac388`, find the
+`GXF_ENTER` (genter) dispatch on x16, and walk the `(0x0:0xf)` handler to read
+the exact bootstrap pre-state and handoff_region layout the shim must satisfy.
+
+---
+
 ## SPTM calling convention
 
 All runtime SPTM calls use a two-instruction sequence:
@@ -295,6 +341,7 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | `__DATA_SPTM` structure                         | ✓ done  | 336KB, all-zero at load, GL2-initialized |
 | `currentg` register purpose                     | ✓ done  | GL2 re-entrancy guard; pre-hook spins     |
 | Number of subsystems                            | ✓ done  | 9 active (0x0, 0x3, 0x5–0x7, 0x9–0xb, 0xd) |
+| SPTM binary accessibility                       | ✓ done  | LZFSE, **unencrypted** ARM64e Mach-O; ver 611.120.6 M4=M5 |
 | m1n1 shim entry mechanism                       | ◑ draft | patch 0004 — genter stub + (0x0:0xf), unverified |
 | What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE (drives shim pre-state) |
 | Minimum call sequence for shim                  | ✗ open  | Likely just `(0x0:0xf)` but unverified   |

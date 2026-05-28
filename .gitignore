@@ -4,6 +4,8 @@ ipsw/*.ipsw
 # Extracted firmware blobs — not redistributable (Apple copyright)
 analysis/*/extracted/
 analysis/*/fw/
+*.im4p
+*.payload
 
 # Python venv
 .venv/
