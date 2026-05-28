@@ -1,0 +1,51 @@
+idx,xnu_caller_summary,likely_sptm_op,confidence
+0x00,"(no callers found)","unknown",?
+0x01,"pa_get_ptd, sptm_get_frame_type, ml_si","sptm_retype",confirmed (named stub)
+0x02,"pa_get_ptd, pmap_set_shared_region","sptm_map_page / sptm_uat_map_table",med
+0x03,"sptm_get_frame_type, pa_get_ptd, kvtophys","sptm_uat_get_info",med
+0x04,"pa_get_ptd ×3","sptm_root_table_paddr / uat_state_get_root_table_paddr",med-high
+0x05,"pmap_set_shared_region×8, pmap_unnest_options","sptm_update_region",med-high
+0x06,"pa_get_ptd ×5","sptm_drop_table_refcnts / get_info",low
+0x07,"pa_get_ptd, pmap_set_shared_region, ml","sptm_disjoint_op",low
+0x08,"pa_get_ptd","sptm_update_disjoint",low
+0x09,"pmap_set_shared_region","sptm_configure_shared_region",high
+0x0a,"pmap_unnest_options_internal","sptm_unnest_region",high
+0x0b,"pmap_set_shared_region, pmap_unnest","sptm_nest_region / unnest",med
+0x0c,"vm_shared_region_auth_remap, pmap_trim_internal","sptm_set_shared_region",med
+0x0d,"pmap_switch_internal","sptm_switch_root",high
+0x0e,"kvtophys_nofail (CPU topology query per research doc, _ml_get_topology_info)","CPU topology query",confirmed (research doc)
+0x0f,"(no callers — boot handoff path uses raw genter elsewhere)","boot handoff acknowledgment",confirmed (research doc)
+0x10,"pmap_set_shared_region","sptm_slide_region / shared",med
+0x11,"pmap_set_shared_region","sptm_set_shared_region",med
+0x12,"arm_init","sptm_register_cpu / cpu_init",high (boot path)
+0x13,"arm_init","sptm_n_cpus / cpu_init aux",high (boot path)
+0x14,"ml_set_interrupts_enabled_with_debug ×5","sptm-side debug/IRQ helper",low
+0x15,"pa_get_ptd×7, pmap_set_shared_region×3, ml_si","sptm_map_page (frequent leaf-PTE install)",high
+0x16,"(no XNU callers)","unused / other-kext only",?
+0x17,"(no XNU callers)","unused / other-kext only",?
+0x18,"(no XNU callers)","unused / other-kext only",?
+0x19,"(no XNU callers)","unused / other-kext only",?
+0x1a,"(no XNU callers)","unused / other-kext only",?
+0x1b,"(no XNU callers)","unused / other-kext only",?
+0x1c,"(no XNU callers)","unused / other-kext only",?
+0x1d,"(no XNU callers)","unused / other-kext only",?
+0x1e,"uat_get_root_table_paddr","uat_state_get_root_table_paddr",high (name match)
+0x1f,"IOKit (io frame registration path)","sptm_register_io_frame",med-high
+0x20,"IOKit (io frame registration path)","sptm_register_io_frame (free?)",med-high
+0x21,"arm_init","sptm_init_register_allow_io_range / register_xnu_exc_return",med
+0x22,"(no XNU callers)","unused / other-kext only",?
+0x23,"(no XNU callers)","unused / other-kext only",?
+0x24,"(no XNU callers)","unused / other-kext only",?
+0x25,"(no XNU callers)","unused / other-kext only",?
+0x26,"(no XNU callers)","unused / other-kext only",?
+0x27,"pmap_set_shared_region","sptm_nest_region",med
+0x28,"pmap_set_shared_region","sptm_nest_region (paired with 0x27)",med
+0x29,"(no XNU callers)","unused / other-kext only",?
+0x2a,"(no XNU callers)","unused / other-kext only",?
+0x2b,"pmap_remove_options_internal","sptm_uat_unmap_table",high
+0x2c,"pmap_remove_options_internal","sptm_unmap_table / unmap_continue",high
+0x2d,"ml_set_interrupts_enabled_with_debug","debug/IRQ helper",low
+0x2e,"arm_init","sptm_register_xnu_exc_return / register_cpu",med-high
+0x2f,"(no XNU callers)","unused / other-kext only",?
+0x30,"(no XNU callers)","unused / other-kext only",?
+0x31,"(no XNU callers)","unused / other-kext only",?

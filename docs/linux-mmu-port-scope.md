@@ -267,3 +267,65 @@ This is **not blocking** for starting the Linux port. You can begin with the
 3 cleanly-named subsystems (`gen3dart` for DART driver, `retype` for page
 typing) and add `sptm_uat_*` wrappers as each is identified during
 implementation. The CSV is the index.
+
+### Subsys 0 labels (recovered from XNU caller-function names)
+
+For the 50-entry subsys 0 (the bulk of the MMU API), scanned each stub for
+BL callers and identified each caller via `__func__` strings inside its
+function body. Full data: `analysis/sptm/sptm-subsys0-labels.csv`.
+
+Confidence legend: ✓ confirmed (named export or earlier-RE'd) · H high · M
+medium · L low (callers are generic helpers) · ? no XNU callers (not in
+Linux's needed surface).
+
+| idx | likely SPTM op | conf. | XNU callers (hint) |
+|-----|---------------|-------|--------------------|
+| `0x00` | unknown | ? | (no callers) |
+| `0x01` | **`sptm_retype`** | ✓ | `pa_get_ptd`, `sptm_get_frame_type` (28 sites) |
+| `0x02` | `sptm_map_page` / `sptm_uat_map_table` | M | `pa_get_ptd`, `pmap_set_shared_region` |
+| `0x03` | `sptm_uat_get_info` | M | `sptm_get_frame_type`, `pa_get_ptd`, `kvtophys_nofail` |
+| `0x04` | `uat_state_get_root_table_paddr` | M+ | `pa_get_ptd` ×3 |
+| `0x05` | `sptm_update_region` | M+ | `pmap_set_shared_region` ×8, `pmap_unnest_options` |
+| `0x06` | `sptm_drop_table_refcnts` / info-getter | L | `pa_get_ptd` ×5 |
+| `0x07` | `sptm_disjoint_op` | L | mixed |
+| `0x08` | `sptm_update_disjoint` | L | `pa_get_ptd` |
+| `0x09` | **`sptm_configure_shared_region`** | H | `pmap_set_shared_region` |
+| `0x0a` | **`sptm_unnest_region`** | H | `pmap_unnest_options_internal` |
+| `0x0b` | `sptm_nest_region` / unnest variant | M | mixed |
+| `0x0c` | `sptm_set_shared_region` | M | `vm_shared_region_auth_remap`, `pmap_trim_internal` |
+| `0x0d` | **`sptm_switch_root`** | H | `pmap_switch_internal` |
+| `0x0e` | **CPU topology query** | ✓ | `_ml_get_topology_info` (research doc) |
+| `0x0f` | **boot handoff `(0x0:0xf)`** | ✓ | (no runtime callers; raw genter in `__TEXT_BOOT_EXEC`) |
+| `0x10` | `sptm_slide_region` / shared | M | `pmap_set_shared_region` |
+| `0x11` | `sptm_set_shared_region` (paired) | M | `pmap_set_shared_region` |
+| `0x12` | `sptm_register_cpu` / `cpu_init` | H (boot) | `arm_init` |
+| `0x13` | `sptm_n_cpus` / `cpu_init` aux | H (boot) | `arm_init` |
+| `0x14` | debug/IRQ helper | L | `ml_set_interrupts_enabled_with_debug` ×5 |
+| `0x15` | **`sptm_map_page`** (frequent leaf-PTE install) | H | `pa_get_ptd` ×7, `pmap_set_shared_region` ×3 |
+| `0x16–0x1d` | (8 idxs) unused / other-kext only | ? | no XNU callers |
+| `0x1e` | **`uat_state_get_root_table_paddr`** | H | `uat_get_root_table_paddr` (direct name match) |
+| `0x1f` | `sptm_register_io_frame` | M+ | IOKit (io frame registration) |
+| `0x20` | `sptm_register_io_frame` (paired/free) | M+ | IOKit (io frame registration) |
+| `0x21` | `sptm_init_register_allow_io_range` / `register_xnu_exc_return` | M | `arm_init` |
+| `0x22–0x26` | (5 idxs) unused / other-kext only | ? | no XNU callers |
+| `0x27` | `sptm_nest_region` | M | `pmap_set_shared_region` |
+| `0x28` | `sptm_nest_region` (paired with `0x27`) | M | `pmap_set_shared_region` |
+| `0x29–0x2a` | (2 idxs) unused / other-kext only | ? | no XNU callers |
+| `0x2b` | **`sptm_uat_unmap_table`** | H | `pmap_remove_options_internal` |
+| `0x2c` | **`sptm_unmap_table`** / `unmap_continue` | H | `pmap_remove_options_internal` |
+| `0x2d` | debug/IRQ helper | L | `ml_set_interrupts_enabled_with_debug` ×2 |
+| `0x2e` | `sptm_register_xnu_exc_return` / `register_cpu` | M+ | `arm_init` |
+| `0x2f–0x31` | (3 idxs) unused / other-kext only | ? | no XNU callers |
+
+**Coverage:** 5 confirmed + 12 high + 12 medium + 5 low + 19 not-needed.
+Linux's MMU port surface from subsys 0 is roughly **the 24 confirmed/high/
+medium-confidence rows** (the others are either already named, debug, or
+not used by XNU and so not by Linux either). The 19 zero-caller idxs do
+not appear in the kernel's `__TEXT_EXEC`; they are not part of the API a
+Linux port needs to implement.
+
+The low-confidence and medium-confidence labels are best refined during
+implementation — when you write a wrapper for, say, `sptm_uat_map_table`,
+you'll know which exact `(0, idx)` it is by reading the XNU caller-side
+context for that operation (its function-body genter site, and which
+`pmap_*` function it sits inside).
