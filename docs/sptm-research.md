@@ -76,9 +76,39 @@ questions:
   `VIOLATION_UAT_INVALID_{TYPE,SUBTYPE,ROOT_TABLE,VADDR,PADDR,PT_LEVEL,REFCNT,
   …}` checks — the page-table-frame invariants SPTM enforces on every call.
 
-Next: disassemble `__TEXT_EXEC` from entry `0xfffffff0270ac388`, find the
-`GXF_ENTER` (genter) dispatch on x16, and walk the `(0x0:0xf)` handler to read
-the exact bootstrap pre-state and handoff_region layout the shim must satisfy.
+### GENTER dispatch internals (T8132, no slide; PIE base `0xfffffff027004000`)
+
+Reset entry `0xfffffff0270ac388` is just `b 0xfffffff0270af000`. The bootstrap
+(`0xfffffff0270af000`) runs **under iBoot, before m1n1** — it takes the SPTM
+boot-args ptr in x0, checks args version ≥ 3, stamps a log struct at
+`bootargs+0x480` with magic **"SPTM"** v3, sets its own `vbar_el1 =
+0xfffffff0270ad000`, and configures `HCR_EL2`/`HCRX_EL2` if entered at EL2. The
+shim does NOT run this; it calls the already-initialized monitor via `genter`.
+
+SPTM installs its guarded-entry vectors (`0xfffffff0270af8a8` region): a
+temporary dispatcher, then it `genter`s itself (the `udf #0` = GENTER at
+`0xfffffff0270af8d4`) and installs the **runtime dispatcher**:
+- `gxf_entry_el1  = 0xfffffff0270a454c`  ← where a shim `genter` from EL1 lands
+- `vbar_gl1       = 0xfffffff0270a8000`  (GL2 exception vectors)
+- `gxf_pabentry_el1 = 0xfffffff0270bbf10` (GL2 prefetch-abort handler)
+- runtime `gxf_entry_el12` is set later at `0xfffffff0270ecf78` (EL2/virt path)
+
+Dispatcher `0xfffffff0270a454c`:
+1. `x8 = esr_gl1 & 0x1f` → entry **type** (0–4); type 4 and a `__DATA+0xc`
+   bit-15 flag select alternate paths; unknown types spin (`mov x0,#0xdead;wfe`).
+2. Per-CPU GL2 state via `tpidr_gl2`; save area at `+0xa30`, with a recursion/
+   mode counter at `+0x38` that picks save slot `+0x80` vs `+0x138`.
+3. Types 2 and 3 (the normal SPTM-call paths) save XNU's full context: args
+   **x0–x7 at save+0x40**, callee-saved + **x15/x16 (the call number) at
+   save+0x90**, plus `spsr_gl1`, `sp_el0`, x17 — then switch to the GL2 stack
+   (`[state+0x20]`) and tail-call a common trampoline **`0xfffffff0270ec010`**
+   with the entry type in x0 (3) and a packed value in x1.
+
+So the `(subsys, idx)` decode — including the `(0x0:0xf)` boot handoff — lives
+in the C dispatcher reached via `0xfffffff0270ec010`, which reads the saved x16
+from `save+0x90`. **Next target:** follow `0xfffffff0270ec010` to the x16
+dispatch table, locate the `(0x0:0xf)` handler, and correlate it with the
+`handoff_region` struct (`micro_magic`/`powered_off`) the shim must present.
 
 ---
 
@@ -342,6 +372,8 @@ page table roots, trust caches, etc. The shim must leave a valid-looking
 | `currentg` register purpose                     | ✓ done  | GL2 re-entrancy guard; pre-hook spins     |
 | Number of subsystems                            | ✓ done  | 9 active (0x0, 0x3, 0x5–0x7, 0x9–0xb, 0xd) |
 | SPTM binary accessibility                       | ✓ done  | LZFSE, **unencrypted** ARM64e Mach-O; ver 611.120.6 M4=M5 |
+| SPTM GENTER dispatcher located                  | ✓ done  | runtime `gxf_entry_el1 = 0xfffffff0270a454c` (T8132) |
+| `(0x0:0xf)` handler semantics                   | ✗ open  | follow trampoline `0xfffffff0270ec010` → x16 table |
 | m1n1 shim entry mechanism                       | ◑ draft | patch 0004 — genter stub + (0x0:0xf), unverified |
 | What SPTM validates about the boot object       | ✗ open  | Need SPTM binary RE (drives shim pre-state) |
 | Minimum call sequence for shim                  | ✗ open  | Likely just `(0x0:0xf)` but unverified   |
